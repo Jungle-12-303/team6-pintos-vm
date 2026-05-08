@@ -17,27 +17,32 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
-/* Number of timer ticks since OS booted. */
+/* OS 부팅 이후 흐른 타이머 tick 수. */
 static int64_t ticks;
+
+/* 깨어날 tick 순서로 정렬한 sleeping 스레드 목록. */
+static struct list sleep_list;
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
 static intr_handler_func timer_interrupt;
+static bool wakeup_tick_less (const struct list_elem *,
+		const struct list_elem *, void *);
+static void timer_wakeup (int64_t);
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
-/* Sets up the 8254 Programmable Interval Timer (PIT) to
-   interrupt PIT_FREQ times per second, and registers the
-   corresponding interrupt. */
+/* 8254 Programmable Interval Timer(PIT)가 초당 PIT_FREQ번 인터럽트를
+   일으키도록 설정하고, 해당 인터럽트를 등록한다. */
 void
 timer_init (void) {
-	/* 8254 input frequency divided by TIMER_FREQ, rounded to
-	   nearest. */
+	/* 8254 입력 주파수를 TIMER_FREQ로 나눈 값을 반올림한다. */
 	uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
 
+	list_init (&sleep_list);
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
 	outb (0x40, count & 0xff);
 	outb (0x40, count >> 8);
@@ -45,7 +50,7 @@ timer_init (void) {
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
-/* Calibrates loops_per_tick, used to implement brief delays. */
+/* 짧은 지연에 사용하는 loops_per_tick을 보정한다. */
 void
 timer_calibrate (void) {
 	unsigned high_bit, test_bit;
@@ -53,15 +58,15 @@ timer_calibrate (void) {
 	ASSERT (intr_get_level () == INTR_ON);
 	printf ("Calibrating timer...  ");
 
-	/* Approximate loops_per_tick as the largest power-of-two
-	   still less than one timer tick. */
+	/* 한 타이머 tick보다 아직 작은 2의 거듭제곱 중 가장 큰 값으로
+	   loops_per_tick을 근사한다. */
 	loops_per_tick = 1u << 10;
 	while (!too_many_loops (loops_per_tick << 1)) {
 		loops_per_tick <<= 1;
 		ASSERT (loops_per_tick != 0);
 	}
 
-	/* Refine the next 8 bits of loops_per_tick. */
+	/* loops_per_tick의 다음 8비트를 세밀하게 보정한다. */
 	high_bit = loops_per_tick;
 	for (test_bit = high_bit >> 1; test_bit != high_bit >> 10; test_bit >>= 1)
 		if (!too_many_loops (high_bit | test_bit))
@@ -70,7 +75,7 @@ timer_calibrate (void) {
 	printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/* OS 부팅 이후 지난 타이머 tick 수를 반환한다. */
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
@@ -80,68 +85,102 @@ timer_ticks (void) {
 	return t;
 }
 
-/* Returns the number of timer ticks elapsed since THEN, which
-   should be a value once returned by timer_ticks(). */
+/* THEN 이후 지난 타이머 tick 수를 반환한다.
+   THEN은 이전에 timer_ticks()가 반환한 값이어야 한다. */
 int64_t
 timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/* 대략 TICKS 타이머 tick 동안 실행을 멈춘다. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	if (ticks <= 0)
+		return;
+
+	old_level = intr_disable ();
+	curr->wakeup_tick = timer_ticks () + ticks;
+	list_insert_ordered (&sleep_list, &curr->elem, wakeup_tick_less, NULL);
+	thread_block ();
+	intr_set_level (old_level);
 }
 
-/* Suspends execution for approximately MS milliseconds. */
+/* 대략 MS 밀리초 동안 실행을 멈춘다. */
 void
 timer_msleep (int64_t ms) {
 	real_time_sleep (ms, 1000);
 }
 
-/* Suspends execution for approximately US microseconds. */
+/* 대략 US 마이크로초 동안 실행을 멈춘다. */
 void
 timer_usleep (int64_t us) {
 	real_time_sleep (us, 1000 * 1000);
 }
 
-/* Suspends execution for approximately NS nanoseconds. */
+/* 대략 NS 나노초 동안 실행을 멈춘다. */
 void
 timer_nsleep (int64_t ns) {
 	real_time_sleep (ns, 1000 * 1000 * 1000);
 }
 
-/* Prints timer statistics. */
+/* 타이머 통계를 출력한다. */
 void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
+/* 타이머 인터럽트 핸들러. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	timer_wakeup (ticks);
 	thread_tick ();
 }
 
-/* Returns true if LOOPS iterations waits for more than one timer
-   tick, otherwise false. */
+static bool
+wakeup_tick_less (const struct list_elem *a,
+		const struct list_elem *b,
+		void *aux UNUSED) {
+	const struct thread *ta = list_entry (a, struct thread, elem);
+	const struct thread *tb = list_entry (b, struct thread, elem);
+
+	if (ta->wakeup_tick != tb->wakeup_tick)
+		return ta->wakeup_tick < tb->wakeup_tick;
+	return ta->priority > tb->priority;
+}
+
+static void
+timer_wakeup (int64_t now) {
+	while (!list_empty (&sleep_list)) {
+		struct thread *t = list_entry (list_front (&sleep_list),
+				struct thread, elem);
+
+		if (t->wakeup_tick > now)
+			break;
+		list_pop_front (&sleep_list);
+		thread_unblock (t);
+	}
+	thread_yield_if_lower_priority ();
+}
+
+/* LOOPS번 반복하는 데 타이머 tick 하나보다 오래 걸리면 true,
+   아니면 false를 반환한다. */
 static bool
 too_many_loops (unsigned loops) {
-	/* Wait for a timer tick. */
+	/* 타이머 tick 하나를 기다린다. */
 	int64_t start = ticks;
 	while (ticks == start)
 		barrier ();
 
-	/* Run LOOPS loops. */
+	/* LOOPS번 반복한다. */
 	start = ticks;
 	busy_wait (loops);
 
-	/* If the tick count changed, we iterated too long. */
+	/* tick 수가 바뀌었다면 너무 오래 반복한 것이다. */
 	barrier ();
 	return start != ticks;
 }

@@ -4,6 +4,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "intrinsic.h"
 
 /* Number of page faults processed. */
@@ -81,11 +82,7 @@ kill (struct intr_frame *f) {
 	   exception originated. */
 	switch (f->cs) {
 		case SEL_UCSEG:
-			/* User's code segment, so it's a user exception, as we
-			   expected.  Kill the user process.  */
-			printf ("%s: dying due to interrupt %#04llx (%s).\n",
-					thread_name (), f->vec_no, intr_name (f->vec_no));
-			intr_dump_frame (f);
+			thread_current ()->exit_status = -1;
 			thread_exit ();
 
 		case SEL_KCSEG:
@@ -149,6 +146,11 @@ page_fault (struct intr_frame *f) {
 	/* Count page faults. */
 	page_fault_cnt++;
 
+	if (thread_current ()->pml4 != NULL) {
+		thread_current ()->exit_status = -1;
+		thread_exit ();
+	}
+
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,
@@ -157,4 +159,3 @@ page_fault (struct intr_frame *f) {
 			user ? "user" : "kernel");
 	kill (f);
 }
-

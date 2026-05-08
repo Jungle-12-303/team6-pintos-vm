@@ -23,6 +23,16 @@ enum thread_status {
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
+struct lock;
+struct file;
+struct child_status;
+
+struct fd_entry {
+	int fd;                            /* File descriptor number. */
+	struct file *file;                 /* Open file. */
+	struct list_elem elem;             /* Element in fd list. */
+};
+
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -79,34 +89,46 @@ typedef int tid_t;
  * the `magic' member of the running thread's `struct thread' is
  * set to THREAD_MAGIC.  Stack overflow will normally change this
  * value, triggering the assertion. */
-/* The `elem' member has a dual purpose.  It can be an element in
- * the run queue (thread.c), or it can be an element in a
- * semaphore wait list (synch.c).  It can be used these two ways
- * only because they are mutually exclusive: only a thread in the
- * ready state is on the run queue, whereas only a thread in the
- * blocked state is on a semaphore wait list. */
+/* `elem' 멤버는 두 가지 용도로 쓰인다. 실행 대기열(thread.c)의 원소가
+ * 될 수도 있고, 세마포어 대기 목록(synch.c)의 원소가 될 수도 있다.
+ * 준비 상태인 스레드만 실행 대기열에 들어가고, 블록 상태인 스레드만
+ * 세마포어 대기 목록에 들어가므로 두 용도가 동시에 겹치지 않는다. */
 struct thread {
-	/* Owned by thread.c. */
-	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
-	char name[16];                      /* Name (for debugging purposes). */
-	int priority;                       /* Priority. */
+	/* thread.c가 관리한다. */
+	tid_t tid;                          /* 스레드 식별자. */
+	enum thread_status status;          /* 스레드 상태. */
+	char name[16];                      /* 이름(디버깅용). */
+	int priority;                       /* 현재 우선순위. */
+	int base_priority;                  /* 기부를 제외한 원래 우선순위. */
+	struct list donations;              /* 우선순위를 기부한 스레드들. */
+	struct list_elem donation_elem;     /* 다른 기부 목록에 들어갈 원소. */
+	struct lock *wait_on_lock;          /* 이 스레드가 기다리는 락. */
+	int64_t wakeup_tick;                /* timer sleep에서 깨어날 tick. */
+	int nice;                           /* MLFQS nice 값. */
+	int recent_cpu;                     /* MLFQS 최근 CPU 사용량. */
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
+	/* thread.c와 synch.c가 함께 사용한다. */
+	struct list_elem elem;              /* 목록 원소. */
+	struct list_elem allelem;           /* 전체 스레드 목록 원소. */
 
 #ifdef USERPROG
-	/* Owned by userprog/process.c. */
-	uint64_t *pml4;                     /* Page map level 4 */
+	/* userprog/process.c가 관리한다. */
+	uint64_t *pml4;                     /* 4단계 페이지 맵. */
+	struct list children;              /* 자식 프로세스 상태 목록. */
+	struct child_status *child_status;  /* 부모와 공유하는 상태. */
+	struct list fd_list;                /* 열린 파일 디스크립터 목록. */
+	int next_fd;                        /* 다음 디스크립터 번호. */
+	struct file *running_file;          /* 쓰기가 금지된 실행 파일. */
+	int exit_status;                    /* 종료 시 보고할 상태. */
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
 
-	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
+	/* thread.c가 관리한다. */
+	struct intr_frame tf;               /* 문맥 전환 정보. */
+	unsigned magic;                     /* 스택 오버플로 감지용. */
 };
 
 /* If false (default), use round-robin scheduler.
@@ -140,6 +162,12 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool thread_priority_more (const struct list_elem *,
+		const struct list_elem *, void *);
+void thread_yield_if_lower_priority (void);
+void thread_donate_priority (struct lock *);
+void thread_remove_lock_donations (struct lock *);
 
 void do_iret (struct intr_frame *tf);
 

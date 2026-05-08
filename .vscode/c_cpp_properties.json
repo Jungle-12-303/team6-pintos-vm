@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Pintos userprog",
+            "includePath": [
+                "${workspaceFolder}/pintos",
+                "${workspaceFolder}/pintos/include",
+                "${workspaceFolder}/pintos/include/lib",
+                "${workspaceFolder}/pintos/include/lib/kernel",
+                "${workspaceFolder}/pintos/userprog"
+            ],
+            "defines": [
+                "USERPROG",
+                "FILESYS"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c99",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

@@ -28,3 +28,15 @@ core
 
 # macOS
 .DS_Store
+
+# 각종 설정 파일
+.codex
+pintos/.vscode/
+.vscode/settings.json
+
+# Annotation (auto-generated)
+.jungle-kit/
+.gitattributes
+
+# Annotation (auto-generated)
+.annotation/
