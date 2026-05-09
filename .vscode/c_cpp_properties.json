@@ -11,7 +11,8 @@
             ],
             "defines": [
                 "USERPROG",
-                "FILESYS"
+                "FILESYS",
+                "VM"
             ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c99",
