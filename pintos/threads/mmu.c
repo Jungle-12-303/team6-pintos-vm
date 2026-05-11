@@ -8,6 +8,9 @@
 #include "threads/mmu.h"
 #include "intrinsic.h"
 
+/* 페이지 디렉터리에서 VA에 해당하는 페이지 테이블 엔트리(PTE)의
+ * 주소를 찾는다. 필요한 하위 페이지 테이블이 없고 CREATE가 true이면
+ * 새 페이지를 할당해 연결한다. */
 static uint64_t *
 pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
 	int idx = PDX (va);
@@ -28,6 +31,9 @@ pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
 	return NULL;
 }
 
+/* 페이지 디렉터리 포인터 테이블(PDPT)에서 VA에 해당하는 PTE까지
+ * 내려간다. 중간 단계가 없고 CREATE가 true이면 새 페이지 디렉터리를
+ * 만들며, 이후 단계 생성에 실패하면 방금 만든 항목을 되돌린다. */
 static uint64_t *
 pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
 	uint64_t *pte = NULL;
@@ -98,6 +104,8 @@ pml4_create (void) {
 	return pml4;
 }
 
+/* 하나의 페이지 테이블을 순회하며 존재하는 각 PTE에 FUNC를 적용한다.
+ * 인덱스들을 조합해 해당 엔트리가 나타내는 가상 주소를 계산한다. */
 static bool
 pt_for_each (uint64_t *pt, pte_for_each_func *func, void *aux,
 		unsigned pml4_index, unsigned pdp_index, unsigned pdx_index) {
@@ -115,6 +123,8 @@ pt_for_each (uint64_t *pt, pte_for_each_func *func, void *aux,
 	return true;
 }
 
+/* 하나의 페이지 디렉터리를 순회하며 존재하는 페이지 테이블마다
+ * pt_for_each()를 호출한다. */
 static bool
 pgdir_for_each (uint64_t *pdp, pte_for_each_func *func, void *aux,
 		unsigned pml4_index, unsigned pdp_index) {
@@ -128,6 +138,8 @@ pgdir_for_each (uint64_t *pdp, pte_for_each_func *func, void *aux,
 	return true;
 }
 
+/* 하나의 PDPT를 순회하며 존재하는 페이지 디렉터리마다
+ * pgdir_for_each()를 호출한다. */
 static bool
 pdp_for_each (uint64_t *pdp,
 		pte_for_each_func *func, void *aux, unsigned pml4_index) {
@@ -153,6 +165,8 @@ pml4_for_each (uint64_t *pml4, pte_for_each_func *func, void *aux) {
 	return true;
 }
 
+/* 하나의 페이지 테이블이 가리키는 모든 물리 페이지를 해제한 뒤
+ * 페이지 테이블 자체를 해제한다. */
 static void
 pt_destroy (uint64_t *pt) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -163,6 +177,8 @@ pt_destroy (uint64_t *pt) {
 	palloc_free_page ((void *) pt);
 }
 
+/* 하나의 페이지 디렉터리에 속한 페이지 테이블들을 모두 파괴한 뒤
+ * 페이지 디렉터리 자체를 해제한다. */
 static void
 pgdir_destroy (uint64_t *pdp) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -173,6 +189,8 @@ pgdir_destroy (uint64_t *pdp) {
 	palloc_free_page ((void *) pdp);
 }
 
+/* 하나의 PDPT에 속한 페이지 디렉터리들을 모두 파괴한 뒤
+ * PDPT 자체를 해제한다. */
 static void
 pdpe_destroy (uint64_t *pdpe) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {

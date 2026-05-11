@@ -84,6 +84,7 @@ struct page_operations {
  * 이 구조체에 대해 특정 설계를 따르도록 강제하지 않는다.
  * 이 부분의 모든 설계는 구현자에게 달려 있다. */
 struct supplemental_page_table {
+	struct hash spt_hash;
 };
 
 #include "threads/thread.h"

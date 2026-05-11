@@ -39,6 +39,7 @@ uninit_new (struct page *page, void *va, vm_initializer *init, enum vm_type type
 	};
 }
 
+
 /* 첫 번째 fault에서 페이지를 초기화한다. */
 static bool
 uninit_initialize (struct page *page, void *kva) {
