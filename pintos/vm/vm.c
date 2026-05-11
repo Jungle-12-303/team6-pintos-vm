@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "lib/kernel/hash.h"
 
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
