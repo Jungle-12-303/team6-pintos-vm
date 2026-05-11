@@ -4,8 +4,8 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
-static int64_t page_hash_func (const struct hash_elem *e, void *aux);
-static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
+static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -196,7 +196,7 @@ supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 /* 새로 구현하는 함수 */
 
 /* va를 인덱스로 사용하는 해시 함수*/
-static int64_t page_hash_func (const struct hash_elem *e, void *aux) {
+static uint64_t page_hash_func (const struct hash_elem *e, void *aux) {
 	struct page *p = hash_entry(e, struct page, hash_elem);
 	uint64_t hash = hash_bytes(&p->va, sizeof p->va);
 
@@ -206,9 +206,9 @@ static int64_t page_hash_func (const struct hash_elem *e, void *aux) {
 }
 
 /* 해시 테이블에서 va를 기준으로 비교하는 함수*/
-static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux){
+static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux){
 	struct page *p_a = hash_entry(a, struct page, hash_elem);
 	struct page *p_b = hash_entry(b, struct page, hash_elem);
 	
-	return &p_a->va < &p_b->va;
+	return p_a->va < p_b->va;
 }
