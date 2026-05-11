@@ -178,7 +178,7 @@ vm_do_claim_page (struct page *page) {
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	/* SONNY'S CODE */
-	if(!hash_init(&spt->spt_hash, hash_int, compare_elem, NULL)) {
+	if(!hash_init(&spt->spt_hash, 해시 함수, compare_elem, NULL)) {
 		PANIC("failed hash_init -SONNY-");
 	}
 
