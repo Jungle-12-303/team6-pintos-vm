@@ -4,6 +4,10 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+static int64_t page_hash_func (const struct hash_elem *e, void *aux);
+static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -187,4 +191,24 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+/* 새로 구현하는 함수 */
+
+/* va를 인덱스로 사용하는 해시 함수*/
+static int64_t page_hash_func (const struct hash_elem *e, void *aux) {
+	struct page *p = hash_entry(e, struct page, hash_elem);
+	uint64_t hash = hash_bytes(&p->va, sizeof p->va);
+
+	printf ("[page_hash] va=%p hash=0x%llx\n", p->va, hash);
+
+	return hash;
+}
+
+/* 해시 테이블에서 va를 기준으로 비교하는 함수*/
+static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux){
+	struct page *p_a = hash_entry(a, struct page, hash_elem);
+	struct page *p_b = hash_entry(b, struct page, hash_elem);
+	
+	return &p_a->va < &p_b->va;
 }
