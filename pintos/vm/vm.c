@@ -11,6 +11,12 @@
 /* SONNY'S CODE */
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
+static int64_t page_hash_func (const struct hash_elem *e, void *aux);
+static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+
+
+/* Initializes the virtual memory subsystem by invoking each subsystem's
+ * intialize codes. */
 void
 vm_init (void) {
 	vm_anon_init ();
@@ -196,4 +202,24 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 제거하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 기록한다. */
+}
+
+/* 새로 구현하는 함수 */
+
+/* va를 인덱스로 사용하는 해시 함수*/
+static int64_t page_hash_func (const struct hash_elem *e, void *aux) {
+	struct page *p = hash_entry(e, struct page, hash_elem);
+	uint64_t hash = hash_bytes(&p->va, sizeof p->va);
+
+	printf ("[page_hash] va=%p hash=0x%llx\n", p->va, hash);
+
+	return hash;
+}
+
+/* 해시 테이블에서 va를 기준으로 비교하는 함수*/
+static bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux){
+	struct page *p_a = hash_entry(a, struct page, hash_elem);
+	struct page *p_b = hash_entry(b, struct page, hash_elem);
+	
+	return &p_a->va < &p_b->va;
 }
