@@ -49,7 +49,10 @@ struct page {
 	/* Your implementation */
 	/* 직접 구현할 부분. */
 	struct hash_elem hash_elem;
-
+	bool writable;
+  
+	/* Per-type data are binded into the union.
+	 * Each function automatically detects the current union */
 	/* 타입별 데이터는 union 안에 묶여 있다.
 	 * 각 함수는 현재 union을 자동으로 감지한다. */
 	union {
