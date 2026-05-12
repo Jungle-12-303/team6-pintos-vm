@@ -65,6 +65,7 @@ pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
  * PML4E에 VADDR을 위한 페이지 테이블이 없으면 동작은 CREATE에 따라 달라진다.
  * CREATE가 true이면 새 페이지 테이블을 만들고 그 안의 포인터를 반환한다.
  * 그렇지 않으면 널 포인터를 반환한다. */
+/* 어떤 가상주소 va에 해당하는 최종 PTE의 주소를 찾아주는 함수 -SONNY- */
 uint64_t *
 pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
 	uint64_t *pte = NULL;

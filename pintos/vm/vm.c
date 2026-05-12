@@ -5,8 +5,14 @@
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
 
+
+/* SONNY'S CODE */
+// KENL_BASS를 사용하기 위한 import
+#include "../include/threads/vaddr.h"
+/* SONNY'S CODE */
+
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
-static int64_t page_hash_func (const struct hash_elem *e, void *aux);
+static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 
@@ -69,6 +75,16 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
+	struct page tmp;
+	tmp.va = va;
+
+	struct hash_elem *find = hash_find(&spt->hash_table, &tmp.hash_elem);
+
+	if(!find) {
+		return NULL;
+	}
+
+	page = hash_entry(find, struct page, hash_elem);
 
 	return page;
 }
@@ -79,6 +95,14 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: 이 함수를 채운다. */
+
+	/* SONNY'S CODE */
+	// 해시 테이블에 page 추가
+	if (0x400000 <= page->va <= USER_STACK) { // 유저 영역일 때
+		succ = true;
+		hash_insert (&spt->hash_table, &page->hash_elem);
+	}
+	/* SONNY'S CODE */
 
 	return succ;
 }
@@ -179,10 +203,10 @@ vm_do_claim_page (struct page *page) {
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	/* SONNY'S CODE */
-	if(!hash_init(&spt->spt_hash, 해시 함수, compare_elem, NULL)) {
+	// 해시 초기화
+	if(!hash_init(&spt->hash_table, page_hash_func, page_less_func, NULL)) {
 		PANIC("failed hash_init -SONNY-");
 	}
-
 	/* SONNY'S CODE */
 }
 
