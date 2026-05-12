@@ -242,13 +242,11 @@ vm_do_claim_page (struct page *page) {
 }
 
 /* 새로운 supplemental page table을 초기화한다. */
-void
+bool
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	/* SONNY'S CODE */
 	// 해시 초기화
-	if(!hash_init(&spt->hash_table, page_hash_func, page_less_func, NULL)) {
-		PANIC("failed hash_init -SONNY-");
-	}
+	return hash_init(&spt->hash_table, page_hash_func, page_less_func, NULL);
 	/* SONNY'S CODE */
 }
 
