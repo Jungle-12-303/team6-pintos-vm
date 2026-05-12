@@ -8,6 +8,9 @@
 #include "threads/mmu.h"
 #include "intrinsic.h"
 
+/* 페이지 디렉터리에서 VA에 해당하는 페이지 테이블 엔트리(PTE)의
+ * 주소를 찾는다. 필요한 하위 페이지 테이블이 없고 CREATE가 true이면
+ * 새 페이지를 할당해 연결한다. */
 static uint64_t *
 pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
 	int idx = PDX (va);
@@ -28,6 +31,9 @@ pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
 	return NULL;
 }
 
+/* 페이지 디렉터리 포인터 테이블(PDPT)에서 VA에 해당하는 PTE까지
+ * 내려간다. 중간 단계가 없고 CREATE가 true이면 새 페이지 디렉터리를
+ * 만들며, 이후 단계 생성에 실패하면 방금 만든 항목을 되돌린다. */
 static uint64_t *
 pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
 	uint64_t *pte = NULL;
@@ -55,12 +61,11 @@ pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
 	return pte;
 }
 
-/* Returns the address of the page table entry for virtual
- * address VADDR in page map level 4, pml4.
- * If PML4E does not have a page table for VADDR, behavior depends
- * on CREATE.  If CREATE is true, then a new page table is
- * created and a pointer into it is returned.  Otherwise, a null
- * pointer is returned. */
+/* 페이지 맵 레벨 4인 pml4에서 가상 주소 VADDR에 대한 페이지 테이블 엔트리의 주소를 반환한다.
+ * PML4E에 VADDR을 위한 페이지 테이블이 없으면 동작은 CREATE에 따라 달라진다.
+ * CREATE가 true이면 새 페이지 테이블을 만들고 그 안의 포인터를 반환한다.
+ * 그렇지 않으면 널 포인터를 반환한다. */
+/* 어떤 가상주소 va에 해당하는 최종 PTE의 주소를 찾아주는 함수 -SONNY- */
 uint64_t *
 pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
 	uint64_t *pte = NULL;
@@ -88,10 +93,10 @@ pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
 	return pte;
 }
 
-/* Creates a new page map level 4 (pml4) has mappings for kernel
- * virtual addresses, but none for user virtual addresses.
- * Returns the new page directory, or a null pointer if memory
- * allocation fails. */
+/* 커널 가상 주소에 대한 매핑은 있지만 사용자 가상 주소에 대한 매핑은 없는
+ * 새 페이지 맵 레벨 4(pml4)를 만든다.
+ * 새 페이지 디렉터리를 반환하며, 메모리 할당에 실패하면 널 포인터를
+ * 반환한다. */
 uint64_t *
 pml4_create (void) {
 	uint64_t *pml4 = palloc_get_page (0);
@@ -100,6 +105,8 @@ pml4_create (void) {
 	return pml4;
 }
 
+/* 하나의 페이지 테이블을 순회하며 존재하는 각 PTE에 FUNC를 적용한다.
+ * 인덱스들을 조합해 해당 엔트리가 나타내는 가상 주소를 계산한다. */
 static bool
 pt_for_each (uint64_t *pt, pte_for_each_func *func, void *aux,
 		unsigned pml4_index, unsigned pdp_index, unsigned pdx_index) {
@@ -117,6 +124,8 @@ pt_for_each (uint64_t *pt, pte_for_each_func *func, void *aux,
 	return true;
 }
 
+/* 하나의 페이지 디렉터리를 순회하며 존재하는 페이지 테이블마다
+ * pt_for_each()를 호출한다. */
 static bool
 pgdir_for_each (uint64_t *pdp, pte_for_each_func *func, void *aux,
 		unsigned pml4_index, unsigned pdp_index) {
@@ -130,6 +139,8 @@ pgdir_for_each (uint64_t *pdp, pte_for_each_func *func, void *aux,
 	return true;
 }
 
+/* 하나의 PDPT를 순회하며 존재하는 페이지 디렉터리마다
+ * pgdir_for_each()를 호출한다. */
 static bool
 pdp_for_each (uint64_t *pdp,
 		pte_for_each_func *func, void *aux, unsigned pml4_index) {
@@ -143,7 +154,7 @@ pdp_for_each (uint64_t *pdp,
 	return true;
 }
 
-/* Apply FUNC to each available pte entries including kernel's. */
+/* 커널의 것을 포함해 사용 가능한 각 pte 엔트리에 FUNC를 적용한다. */
 bool
 pml4_for_each (uint64_t *pml4, pte_for_each_func *func, void *aux) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -155,6 +166,8 @@ pml4_for_each (uint64_t *pml4, pte_for_each_func *func, void *aux) {
 	return true;
 }
 
+/* 하나의 페이지 테이블이 가리키는 모든 물리 페이지를 해제한 뒤
+ * 페이지 테이블 자체를 해제한다. */
 static void
 pt_destroy (uint64_t *pt) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -165,6 +178,8 @@ pt_destroy (uint64_t *pt) {
 	palloc_free_page ((void *) pt);
 }
 
+/* 하나의 페이지 디렉터리에 속한 페이지 테이블들을 모두 파괴한 뒤
+ * 페이지 디렉터리 자체를 해제한다. */
 static void
 pgdir_destroy (uint64_t *pdp) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -175,6 +190,8 @@ pgdir_destroy (uint64_t *pdp) {
 	palloc_free_page ((void *) pdp);
 }
 
+/* 하나의 PDPT에 속한 페이지 디렉터리들을 모두 파괴한 뒤
+ * PDPT 자체를 해제한다. */
 static void
 pdpe_destroy (uint64_t *pdpe) {
 	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
@@ -185,31 +202,29 @@ pdpe_destroy (uint64_t *pdpe) {
 	palloc_free_page ((void *) pdpe);
 }
 
-/* Destroys pml4e, freeing all the pages it references. */
+/* pml4e를 파괴하고, 이것이 참조하는 모든 페이지를 해제한다. */
 void
 pml4_destroy (uint64_t *pml4) {
 	if (pml4 == NULL)
 		return;
 	ASSERT (pml4 != base_pml4);
 
-	/* if PML4 (vaddr) >= 1, it's kernel space by define. */
+	/* 정의상 PML4(vaddr) >= 1이면 커널 공간이다. */
 	uint64_t *pdpe = ptov ((uint64_t *) pml4[0]);
 	if (((uint64_t) pdpe) & PTE_P)
 		pdpe_destroy ((void *) PTE_ADDR (pdpe));
 	palloc_free_page ((void *) pml4);
 }
 
-/* Loads page directory PD into the CPU's page directory base
- * register. */
+/* 페이지 디렉터리 PD를 CPU의 페이지 디렉터리 기준 레지스터에 적재한다. */
 void
 pml4_activate (uint64_t *pml4) {
 	lcr3 (vtop (pml4 ? pml4 : base_pml4));
 }
 
-/* Looks up the physical address that corresponds to user virtual
- * address UADDR in pml4.  Returns the kernel virtual address
- * corresponding to that physical address, or a null pointer if
- * UADDR is unmapped. */
+/* pml4에서 사용자 가상 주소 UADDR에 대응하는 물리 주소를 찾는다.
+ * 해당 물리 주소에 대응하는 커널 가상 주소를 반환하며,
+ * UADDR이 매핑되어 있지 않으면 널 포인터를 반환한다. */
 void *
 pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	ASSERT (is_user_vaddr (uaddr));
@@ -221,14 +236,12 @@ pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	return NULL;
 }
 
-/* Adds a mapping in page map level 4 PML4 from user virtual page
- * UPAGE to the physical frame identified by kernel virtual address KPAGE.
- * UPAGE must not already be mapped. KPAGE should probably be a page obtained
- * from the user pool with palloc_get_page().
- * If WRITABLE is true, the new page is read/write;
- * otherwise it is read-only.
- * Returns true if successful, false if memory allocation
- * failed. */
+/* 페이지 맵 레벨 4 PML4에 사용자 가상 페이지 UPAGE에서 커널 가상 주소
+ * KPAGE가 식별하는 물리 프레임으로의 매핑을 추가한다.
+ * UPAGE는 이미 매핑되어 있으면 안 된다.
+ * KPAGE는 아마 palloc_get_page()로 사용자 풀에서 얻은 페이지여야 한다.
+ * WRITABLE이 true이면 새 페이지는 읽기/쓰기가 가능하고, 그렇지 않으면 읽기 전용이다.
+ * 성공하면 true를, 메모리 할당에 실패하면 false를 반환한다. */
 bool
 pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
 	ASSERT (pg_ofs (upage) == 0);
@@ -243,10 +256,10 @@ pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
 	return pte != NULL;
 }
 
-/* Marks user virtual page UPAGE "not present" in page
- * directory PD.  Later accesses to the page will fault.  Other
- * bits in the page table entry are preserved.
- * UPAGE need not be mapped. */
+/* 페이지 디렉터리 PD에서 사용자 가상 페이지 UPAGE를 "존재하지 않음"으로 표시한다.
+ * 이후 이 페이지에 접근하면 페이지 폴트가 발생한다.
+ * 페이지 테이블 엔트리의 다른 비트들은 보존된다.
+ * UPAGE는 매핑되어 있지 않아도 된다. */
 void
 pml4_clear_page (uint64_t *pml4, void *upage) {
 	uint64_t *pte;
@@ -262,18 +275,16 @@ pml4_clear_page (uint64_t *pml4, void *upage) {
 	}
 }
 
-/* Returns true if the PTE for virtual page VPAGE in PML4 is dirty,
- * that is, if the page has been modified since the PTE was
- * installed.
- * Returns false if PML4 contains no PTE for VPAGE. */
+/* PML4에서 가상 페이지 VPAGE의 PTE가 dirty이면, 즉 PTE가 설치된 이후
+ * 페이지가 수정되었으면 true를 반환한다.
+ * PML4에 VPAGE에 대한 PTE가 없으면 false를 반환한다. */
 bool
 pml4_is_dirty (uint64_t *pml4, const void *vpage) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
 	return pte != NULL && (*pte & PTE_D) != 0;
 }
 
-/* Set the dirty bit to DIRTY in the PTE for virtual page VPAGE
- * in PML4. */
+/* PML4에서 가상 페이지 VPAGE의 PTE에 있는 dirty 비트를 DIRTY로 설정한다. */
 void
 pml4_set_dirty (uint64_t *pml4, const void *vpage, bool dirty) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
@@ -288,18 +299,16 @@ pml4_set_dirty (uint64_t *pml4, const void *vpage, bool dirty) {
 	}
 }
 
-/* Returns true if the PTE for virtual page VPAGE in PML4 has been
- * accessed recently, that is, between the time the PTE was
- * installed and the last time it was cleared.  Returns false if
- * PML4 contains no PTE for VPAGE. */
+/* PML4에서 가상 페이지 VPAGE의 PTE가 최근에 접근되었으면 true를 반환한다.
+ * 즉, PTE가 설치된 시점부터 마지막으로 clear된 시점 사이에 접근되었는지를 뜻한다.
+ * PML4에 VPAGE에 대한 PTE가 없으면 false를 반환한다. */
 bool
 pml4_is_accessed (uint64_t *pml4, const void *vpage) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
 	return pte != NULL && (*pte & PTE_A) != 0;
 }
 
-/* Sets the accessed bit to ACCESSED in the PTE for virtual page
-   VPAGE in PD. */
+/* PD에서 가상 페이지 VPAGE의 PTE에 있는 accessed 비트를 ACCESSED로 설정한다. */
 void
 pml4_set_accessed (uint64_t *pml4, const void *vpage, bool accessed) {
 	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
