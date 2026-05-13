@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
+#include <string.h>
 
 
 /* SONNY'S CODE */
@@ -14,6 +15,7 @@
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -54,8 +56,7 @@ static struct frame *vm_evict_frame (void);
 /* vm_initializer : struct page *, void *를 인자로 받고 bool을 반환하는 함수 타입 */
 /* TODO load_segment 함수를 보고 aux 처리에 대한 로직 추가 필요*/
 bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
-		vm_initializer *init, void *aux) {
+vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
 
 	/* 이 함수에 VM_UNINIT 타입을 직접 넘기면 안됨 */
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
@@ -118,7 +119,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
 	struct page tmp;
-	tmp.va = va;
+	tmp.va = pg_round_down(va);
 
 	struct hash_elem *find = hash_find(&spt->hash_table, &tmp.hash_elem);
 
@@ -140,7 +141,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 
 	/* SONNY'S CODE */
 	// 해시 테이블에 page 추가
-	if (0x400000 <= page->va <= USER_STACK) { // 유저 영역일 때
+	if (0x400000 <= page->va && page->va <= USER_STACK) { // 유저 영역일 때
 		succ = true;
 		hash_insert (&spt->hash_table, &page->hash_elem);
 	}
@@ -149,10 +150,14 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 	return succ;
 }
 
+/* spt 테이블에서 페이지가 정확히 제거 됐는지 체크하고 page 할당을 해제 해준다.*/
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	ASSERT (spt != NULL)
+	ASSERT (page != NULL)
+	ASSERT (hash_delete(&spt->hash_table, &page->hash_elem) != NULL)
+	
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* 축출될 struct frame을 가져온다. */
@@ -254,6 +259,86 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	struct hash_iterator i;
+
+	// iterator를 이용해 해시 테이블을 처음부터 순회
+	hash_first (&i, &src->hash_table);
+	while (hash_next (&i)) {
+		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+		struct page *dst_page;
+
+		if (spt_find_page (dst, src_page->va) != NULL)
+			return false;
+
+		dst_page = malloc (sizeof *dst_page);
+		if (dst_page == NULL)
+			return false;
+
+		// 복사하려는 페이지 타입이 VM_UNINIT lazy 페이지이면 새로운 페이지 생성
+		if (src_page->operations->type == VM_UNINIT) {
+			uninit_new (dst_page,
+				src_page->va,
+				src_page->uninit.init,
+				src_page->uninit.type,
+				src_page->uninit.aux,
+				src_page->uninit.page_initializer);
+			dst_page->writable = src_page->writable;
+
+			if (!spt_insert_page (dst, dst_page)) {
+				free (dst_page);
+				return false;
+			}
+			continue;
+		}
+
+		//VM_UNINIT 타입이 아닌 경우
+		enum vm_type type = page_get_type (src_page);
+		bool (*initializer) (struct page *, enum vm_type, void *);
+
+		switch (VM_TYPE (type)) {
+		case VM_ANON:
+			initializer = anon_initializer;
+			break;
+		case VM_FILE:
+			initializer = file_backed_initializer;
+			break;
+		default:
+			free (dst_page);
+			return false;
+		}
+
+		if (src_page->frame == NULL) {
+			free (dst_page);
+			return false;
+		}
+
+		uninit_new (dst_page, src_page->va, NULL, type, NULL, initializer);
+		dst_page->writable = src_page->writable;
+
+		// 목적지 spt에 페이지 추가
+		if (!spt_insert_page (dst, dst_page)) {
+			free (dst_page);
+			return false;
+		}
+
+		// 물리 메모리 추가
+		src_page->frame->pinned = true;
+
+		if (!vm_do_claim_page (dst_page)) {
+			src_page->frame->pinned = false;
+			spt_remove_page (dst, dst_page);
+			return false;
+		}
+
+		dst_page->frame->pinned = true;
+
+		memcpy (dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+
+		src_page->frame->pinned = false;
+		dst_page->frame->pinned = false;
+	}
+
+	return true;
 }
 
 /* supplemental page table이 보유한 자원을 해제한다. */
@@ -261,6 +346,8 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 제거하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 기록한다. */
+
+	hash_destroy(&spt->hash_table, spt_destroy_func);
 }
 
 /* 새로 구현하는 함수 */
@@ -281,4 +368,9 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 	struct page *p_b = hash_entry(b, struct page, hash_elem);
 	
 	return p_a->va < p_b->va;
+}
+
+static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	vm_dealloc_page(page);
 }
