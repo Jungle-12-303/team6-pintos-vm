@@ -635,6 +635,7 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
+					/* 실행파일의 어떤 데이터를 어떤 가상주소(page)에 올릴지 */
 					if (!load_segment (file, file_page, (void *) mem_page,
 								read_bytes, zero_bytes, writable))
 						goto done;
@@ -859,8 +860,9 @@ static bool
 install_page (void *upage, void *kpage, bool writable) {
 	struct thread *t = thread_current ();
 
-	/* 해당 가상 주소에 이미 페이지가 없는지 확인한 뒤,
-	 * 그곳에 이 페이지를 매핑한다. */
+	/* upage가 이미 매핑 되어있는지 확인 없으면 set page로 등록, write권한도 함께 */
+	/* Verify that there's not already a page at that virtual
+	 * address, then map our page there. */
 	return (pml4_get_page (t->pml4, upage) == NULL
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
@@ -900,7 +902,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * PAGE_ZERO_BYTES 바이트는 0으로 채운다. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
 		/* TODO: lazy_load_segment에 정보를 넘기도록 aux를 설정한다. */
 		void *aux = NULL;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
@@ -919,13 +920,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+	/* TODO: stack_bottom(stack_start_point) 에 스택을 매핑하고 즉시 페이지를 claim한다. */
+	void *stack_start_point = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	/* TODO: stack_bottom에 스택을 매핑하고 즉시 페이지를 claim한다.
-	 * TODO: 성공하면 그에 맞게 rsp를 설정한다.
-	 * TODO: 페이지가 스택임을 표시해야 한다. */
+	/* TODO: 페이지가 스택임을 표시해야 한다. */
 	/* TODO: 여기에 코드를 작성한다. */
-
+	/* vm_alloc_page = vm_alloc_page_with_initializer 치환 */
+	/* stack page를 SPT에 등록하고 즉시 claim frame 할당 및 pml4 매핑 */
+	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_start_point, true) && vm_claim_page(stack_start_point)) {
+		/* TODO: 성공하면 그에 맞게 rsp를 설정한다. */
+		if_->rsp = USER_STACK;
+		success = true;
+	} else {
+		return false;
+	}
 	return success;
 }
 #endif /* VM */
