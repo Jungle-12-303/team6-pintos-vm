@@ -583,9 +583,12 @@ load (const char *file_name, struct intr_frame *if_) {
 	get_program_name (file_name, program_name, sizeof program_name);
 	if (program_name[0] == '\0')
 		goto done;
+	printf("[load] start file=%s\n", file_name);
 
 	/* 페이지 디렉터리를 할당하고 활성화한다. */
 	t->pml4 = pml4_create ();
+	printf("[load] pml4=%p\n", t->pml4);
+
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
@@ -594,6 +597,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	lock_acquire (&filesys_lock);
 	fs_locked = true;
 	file = filesys_open (program_name);
+	printf("[load] open file=%p\n", file);
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", program_name);
 		goto done;
@@ -654,21 +659,32 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
+					printf("[load] before load_segment mem=%p read=%u zero=%u writable=%d\n",
+       				(void *) mem_page, read_bytes, zero_bytes, writable);
 					/* 실행파일의 어떤 데이터를 어떤 가상주소(page)에 올릴지 */
 					if (!load_segment (file, file_page, (void *) mem_page,
-								read_bytes, zero_bytes, writable))
-						goto done;
-				}
+								read_bytes, zero_bytes, writable)) {
+							printf("[load] load_segment failed\n");
+							goto done;
+								}
+					else{
+						printf("[load] load_segment ok\n");
+					}
+				} 
 				else
 					goto done;
 				break;
+				
 		}
 	}
 
 	/* 스택을 설정한다. */
-	if (!setup_stack (if_))
-		goto done;
+	printf("[load stack 진입전] before setup_stack\n");
 
+	if (!setup_stack (if_)) {
+	    printf("[load setup stack failed] setup_stack failed\n");
+		goto done;
+	}
 	/* 시작 주소. */
 	if_->rip = ehdr.e_entry;
 
@@ -911,6 +927,7 @@ lazy_load_segment (struct page *page, void *aux) {
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
@@ -923,9 +940,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 		/* TODO: lazy_load_segment에 정보를 넘기도록 aux를 설정한다. */
 		void *aux = NULL;
+		printf("[load_segment 실행 확인] upage=%p read=%zu zero=%zu writable=%d aux=%p\n",
+    	upage, page_read_bytes, page_zero_bytes, writable, aux);
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
-			return false;
+					writable, lazy_load_segment, aux)) {
+					printf("[vm load_segment] vm_alloc failed upage=%p\n", upage);
+						return false;
+					}
 
 		/* 다음 페이지로 진행한다. */
 		read_bytes -= page_read_bytes;
@@ -941,18 +962,38 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	/* TODO: stack_bottom(stack_start_point) 에 스택을 매핑하고 즉시 페이지를 claim한다. */
 	void *stack_start_point = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+	bool alloc_ok; //test
+	bool claim_ok = false; //test
+	// /* TODO: 페이지가 스택임을 표시해야 한다. */
+	// /* TODO: 여기에 코드를 작성한다. */
+	// /* vm_alloc_page = vm_alloc_page_with_initializer 치환 */
+	// /* stack page를 SPT에 등록하고 즉시 claim frame 할당 및 pml4 매핑 */
+	// if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_start_point, true) && vm_claim_page(stack_start_point)) {
+	// 	/* TODO: 성공하면 그에 맞게 rsp를 설정한다. */
+	// 	if_->rsp = USER_STACK;
+	// 	success = true;
+	// } else {
+	// 	return false;
+	// }
+	// return success;
 
-	/* TODO: 페이지가 스택임을 표시해야 한다. */
-	/* TODO: 여기에 코드를 작성한다. */
-	/* vm_alloc_page = vm_alloc_page_with_initializer 치환 */
-	/* stack page를 SPT에 등록하고 즉시 claim frame 할당 및 pml4 매핑 */
-	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_start_point, true) && vm_claim_page(stack_start_point)) {
-		/* TODO: 성공하면 그에 맞게 rsp를 설정한다. */
+	alloc_ok = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_start_point, true);
+	printf("[setup_stack 할당여부] alloc_ok=%d\n", alloc_ok);
+
+	if (alloc_ok) {
+		claim_ok = vm_claim_page(stack_start_point);
+		printf("[setup_stack 매핑여부] claim_ok=%d\n", claim_ok);
+	} else {
+		printf("[setup_stack 매핑 실패..] skip claim because alloc failed\n");
+	}
+
+	if (alloc_ok && claim_ok) {
 		if_->rsp = USER_STACK;
 		success = true;
+		printf("[setup_stack rsp 결과] success rsp=%p\n", (void *) if_->rsp);
 	} else {
-		return false;
+		printf("[setup_stack rst실패] failed\n");
 	}
-	return success;
+	
 }
 #endif /* VM */

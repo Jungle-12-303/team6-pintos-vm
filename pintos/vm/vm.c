@@ -10,6 +10,7 @@
 /* SONNY'S CODE */
 // KENL_BASS를 사용하기 위한 import
 #include "../include/threads/vaddr.h"
+#include "../threads/mmu.h"
 /* SONNY'S CODE */
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -57,7 +58,8 @@ static struct frame *vm_evict_frame (void);
 /* TODO load_segment 함수를 보고 aux 처리에 대한 로직 추가 필요*/
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
-
+printf("[vm_alloc함수] enter upage=%p type=%d writable=%d init=%p aux=%p\n",
+       upage, VM_TYPE(type), writable, init, aux);
 	/* 이 함수에 VM_UNINIT 타입을 직접 넘기면 안됨 */
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
@@ -67,6 +69,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 	/* 이미 등록되어있는 페이지인지 확인 */
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
+		printf("[vm_alloc함수, find_page 안] existing=%p\n", new_page);
 
 		/* page를 생성하고, VM type에 맞는 initializer를 가져온 다음,
 		   uninit_new를 호출해서 "uninit" page 구조체를 만든다.
@@ -92,6 +95,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		default:
 			return false;
 		}
+		printf("[vm_alloc] initializer selected type=%d initializer=%p\n",
+       VM_TYPE(type), initializer);
 
 		new_page = malloc(sizeof *new_page);
 		if(new_page == NULL) {
@@ -102,12 +107,19 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		   fault 때 사용할 정보를 저장한다. */
 		uninit_new (new_page, upage, init, type, aux, initializer);
 		new_page->writable = writable;
-		
+
 		/* TODO: Insert the page into the spt. */
-		if(!spt_insert_page (spt, new_page)) {
-			free(new_page);
+		bool inserted = spt_insert_page(spt, new_page);
+		printf("[vm_alloc insert 확인] inserted=%d\n", inserted);
+		if(!inserted){
+			printf("insert 실패!!");
 			return false;
-		} return true;
+		}
+		return true;
+		// if(!spt_insert_page (spt, new_page)) {
+		// 	free(new_page);
+		// 	return false;
+		// } return true;
 
 	} 
 	return false;
@@ -136,18 +148,17 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: 이 함수를 채운다. */
 
-	/* SONNY'S CODE */
-	// 해시 테이블에 page 추가
-	if (0x400000 <= page->va && page->va <= USER_STACK) { // 유저 영역일 때
-		succ = true;
-		hash_insert (&spt->hash_table, &page->hash_elem);
+	
+	if (pg_ofs(page->va) != 0){
+		return false;
 	}
-	/* SONNY'S CODE */
 
-	return succ;
+	if (page->va < PGSIZE || !is_user_vaddr(page->va) ) {
+		return false;
+	}
+
+	return hash_insert(&spt->hash_table, &page->hash_elem) == NULL;
 }
 
 /* spt 테이블에서 페이지가 정확히 제거 됐는지 체크하고 page 할당을 해제 해준다.*/
@@ -185,8 +196,10 @@ vm_evict_frame (void) {
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채운다. */
+	struct frame *frame = malloc(sizeof *frame);
+	frame->kva = palloc_get_page(PAL_USER);
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -255,12 +268,21 @@ vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
 
-	/* SONNY'S CODE */
-	page->va = va;
-	page->writable = 1;
+	// /* SONNY'S CODE */
+	// page->va = va;
+	// page->writable = 1;
+	// struct supplemental_page_table *spt =  &(thread_current()->spt);
+	// spt_insert_page(spt, page);
+	// /* SONNY'S CODE */
+
+	// return vm_do_claim_page (page);
 	struct supplemental_page_table *spt =  &(thread_current()->spt);
-	spt_insert_page(spt, page);
-	/* SONNY'S CODE */
+	page = spt_find_page(spt,va);
+	printf("[vm_claim page 존재여부] found page=%p\n", page);
+	if(page == NULL) {
+		printf("[vm_claim] page not found\n");
+		return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -275,7 +297,7 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
-
+	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 	return swap_in (page, frame->kva);
 }
 
