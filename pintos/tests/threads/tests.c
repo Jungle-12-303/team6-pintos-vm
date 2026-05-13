@@ -29,6 +29,21 @@ static const struct test tests[] =
     {"priority-preempt", test_priority_preempt},
     {"priority-sema", test_priority_sema},
     {"priority-condvar", test_priority_condvar},
+#ifdef VM
+    {"vm-page-get-type", test_vm_page_get_type},
+    {"vm-anon-initializer", test_vm_anon_initializer},
+    {"vm-file-initializer", test_vm_file_initializer},
+    {"vm-spt-init", test_vm_spt_init},
+    {"vm-spt-insert", test_vm_spt_insert},
+    {"vm-spt-find", test_vm_spt_find},
+    {"vm-spt-remove", test_vm_spt_remove},
+    {"vm-alloc-page", test_vm_alloc_page},
+    {"vm-spt-copy", test_vm_spt_copy},
+    {"vm-spt-kill", test_vm_spt_kill},
+    {"vm-claim-page", test_vm_claim_page},
+    {"vm-fault-invalid", test_vm_fault_invalid},
+    {"vm-fault-claim", test_vm_fault_claim},
+#endif
     {"mlfqs-load-1", test_mlfqs_load_1},
     {"mlfqs-load-60", test_mlfqs_load_60},
     {"mlfqs-load-avg", test_mlfqs_load_avg},
@@ -99,4 +114,3 @@ pass (void)
 {
   printf ("(%s) PASS\n", test_name);
 }
-

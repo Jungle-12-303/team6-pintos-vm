@@ -9,6 +9,13 @@ priority-donate-nest priority-donate-sema priority-donate-lower		\
 priority-fifo priority-preempt priority-sema priority-condvar		\
 priority-donate-chain)
 
+ifneq ($(filter vm,$(KERNEL_SUBDIRS)),)
+tests/threads_TESTS += $(addprefix tests/threads/,vm-page-get-type	\
+vm-anon-initializer vm-file-initializer vm-spt-init vm-spt-insert	\
+vm-spt-find vm-spt-remove vm-alloc-page vm-spt-copy vm-spt-kill		\
+vm-claim-page vm-fault-invalid vm-fault-claim)
+endif
+
 # Sources for tests.
 tests/threads_SRC  = tests/threads/tests.c
 tests/threads_SRC += tests/threads/alarm-wait.c
@@ -28,6 +35,9 @@ tests/threads_SRC += tests/threads/priority-preempt.c
 tests/threads_SRC += tests/threads/priority-sema.c
 tests/threads_SRC += tests/threads/priority-condvar.c
 tests/threads_SRC += tests/threads/priority-donate-chain.c
+ifneq ($(filter vm,$(KERNEL_SUBDIRS)),)
+tests/threads_SRC += tests/threads/vm-unit.c
+endif
 tests/threads_SRC += tests/threads/mlfqs/mlfqs-load-1.c
 tests/threads_SRC += tests/threads/mlfqs/mlfqs-load-60.c
 tests/threads_SRC += tests/threads/mlfqs/mlfqs-load-avg.c

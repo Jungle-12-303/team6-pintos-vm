@@ -10,6 +10,7 @@
 /* SONNY'S CODE */
 // KENL_BASS를 사용하기 위한 import
 #include "../include/threads/vaddr.h"
+#include "../threads/mmu.h"
 /* SONNY'S CODE */
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -138,6 +139,16 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: 이 함수를 채운다. */
+	if (pg_ofs(page->va) != 0) {
+		return false;
+	}
+
+	if (page->va < PGSIZE || !is_user_vaddr(page->va) ) {
+		return false;
+	}
+
+	return hash_insert(&spt->hash_table, &page->hash_elem) == NULL;
+	
 
 	/* SONNY'S CODE */
 	// 해시 테이블에 page 추가
@@ -185,8 +196,15 @@ vm_evict_frame (void) {
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
+	//struct frame *frame = NULL;
 	/* TODO: 이 함수를 채운다. */
+	/* 일단 PAL_USER로 SONNY'S CODE */
+	struct frame *frame = malloc(sizeof frame);
+	frame->kva = palloc_get_page(PAL_USER);
+	if (frame->kva == NULL) {
+		/* 스왑 코드 작성 필요 */
+	}
+	/* SONNY'S CODE */
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -252,8 +270,9 @@ vm_dealloc_page (struct page *page) {
 /* VA에 할당된 페이지를 claim한다. */
 bool
 vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
+	// struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
+	struct page *page = malloc(sizeof(struct page));
 
 	/* SONNY'S CODE */
 	page->va = va;
@@ -275,6 +294,7 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
+	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 
 	return swap_in (page, frame->kva);
 }

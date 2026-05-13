@@ -23,6 +23,21 @@ extern test_func test_priority_fifo;
 extern test_func test_priority_preempt;
 extern test_func test_priority_sema;
 extern test_func test_priority_condvar;
+#ifdef VM
+extern test_func test_vm_page_get_type;
+extern test_func test_vm_anon_initializer;
+extern test_func test_vm_file_initializer;
+extern test_func test_vm_spt_init;
+extern test_func test_vm_spt_insert;
+extern test_func test_vm_spt_find;
+extern test_func test_vm_spt_remove;
+extern test_func test_vm_alloc_page;
+extern test_func test_vm_spt_copy;
+extern test_func test_vm_spt_kill;
+extern test_func test_vm_claim_page;
+extern test_func test_vm_fault_invalid;
+extern test_func test_vm_fault_claim;
+#endif
 extern test_func test_mlfqs_load_1;
 extern test_func test_mlfqs_load_60;
 extern test_func test_mlfqs_load_avg;
@@ -38,4 +53,3 @@ void fail (const char *, ...);
 void pass (void);
 
 #endif /* tests/threads/tests.h */
-
