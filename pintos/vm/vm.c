@@ -193,7 +193,9 @@ vm_get_frame (void) {
 /* 스택을 확장한다. */
 static void
 vm_stack_growth (void *addr UNUSED) {
-	
+	/* SONNY'S CODE */
+	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
+	/* SONNY'S CODE */
 }
 
 /* 쓰기 보호된 페이지에서 발생한 fault를 처리한다. */
@@ -213,10 +215,13 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	
 	/* SONNY'S CODE */
 	if (not_present) { // 아직 할당x인 경우
-
+		if(spt_find_page(spt, addr) == NULL) { //spt에 페이지 없는 경우
+			vm_stack_growth(addr);
+			return vm_claim_page(addr);
+		}
 	}
 	else if (write | user) { // 할당은 되어있지만 권한 문제인 경우
-		
+		return false;
 	}
 
 	
@@ -238,6 +243,13 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
+
+	/* SONNY'S CODE */
+	page->va = va;
+	page->writable = 1;
+	struct supplemental_page_table *spt =  &(thread_current()->spt);
+	spt_insert_page(spt, page);
+	/* SONNY'S CODE */
 
 	return vm_do_claim_page (page);
 }
