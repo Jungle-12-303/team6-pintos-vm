@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
+#include <string.h>
 
 
 /* SONNY'S CODE */
@@ -148,6 +149,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 	return succ;
 }
 
+/* spt 테이블에서 페이지가 정확히 제거 됐는지 체크하고 page 할당을 해제 해준다.*/
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	ASSERT (spt != NULL)
@@ -256,6 +258,86 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	struct hash_iterator i;
+
+	// iterator를 이용해 해시 테이블을 처음부터 순회
+	hash_first (&i, &src->hash_table);
+	while (hash_next (&i)) {
+		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+		struct page *dst_page;
+
+		if (spt_find_page (dst, src_page->va) != NULL)
+			return false;
+
+		dst_page = malloc (sizeof *dst_page);
+		if (dst_page == NULL)
+			return false;
+
+		// 복사하려는 페이지 타입이 VM_UNINIT lazy 페이지이면 새로운 페이지 생성
+		if (src_page->operations->type == VM_UNINIT) {
+			uninit_new (dst_page,
+				src_page->va,
+				src_page->uninit.init,
+				src_page->uninit.type,
+				src_page->uninit.aux,
+				src_page->uninit.page_initializer);
+			dst_page->writable = src_page->writable;
+
+			if (!spt_insert_page (dst, dst_page)) {
+				free (dst_page);
+				return false;
+			}
+			continue;
+		}
+
+		//VM_UNINIT 타입이 아닌 경우
+		enum vm_type type = page_get_type (src_page);
+		bool (*initializer) (struct page *, enum vm_type, void *);
+
+		switch (VM_TYPE (type)) {
+		case VM_ANON:
+			initializer = anon_initializer;
+			break;
+		case VM_FILE:
+			initializer = file_backed_initializer;
+			break;
+		default:
+			free (dst_page);
+			return false;
+		}
+
+		if (src_page->frame == NULL) {
+			free (dst_page);
+			return false;
+		}
+
+		uninit_new (dst_page, src_page->va, NULL, type, NULL, initializer);
+		dst_page->writable = src_page->writable;
+
+		// 목적지 spt에 페이지 추가
+		if (!spt_insert_page (dst, dst_page)) {
+			free (dst_page);
+			return false;
+		}
+
+		// 물리 메모리 추가
+		src_page->frame->pinned = true;
+
+		if (!vm_do_claim_page (dst_page)) {
+			src_page->frame->pinned = false;
+			spt_remove_page (dst, dst_page);
+			return false;
+		}
+
+		dst_page->frame->pinned = true;
+
+		memcpy (dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+
+		src_page->frame->pinned = false;
+		dst_page->frame->pinned = false;
+	}
+
+	return true;
 }
 
 /* supplemental page table이 보유한 자원을 해제한다. */

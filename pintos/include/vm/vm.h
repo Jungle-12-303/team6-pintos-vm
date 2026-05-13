@@ -69,6 +69,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	bool pinned;
 };
 
 /* 페이지 연산을 위한 함수 테이블.
