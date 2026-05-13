@@ -15,6 +15,7 @@
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -345,6 +346,8 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 제거하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 기록한다. */
+
+	hash_destroy(&spt->hash_table, spt_destroy_func);
 }
 
 /* 새로 구현하는 함수 */
@@ -365,4 +368,9 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 	struct page *p_b = hash_entry(b, struct page, hash_elem);
 	
 	return p_a->va < p_b->va;
+}
+
+static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	vm_dealloc_page(page);
 }
