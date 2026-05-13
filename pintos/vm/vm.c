@@ -119,7 +119,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
 	struct page tmp;
-	tmp.va = va;
+	tmp.va = pg_round_down(va);
 
 	struct hash_elem *find = hash_find(&spt->hash_table, &tmp.hash_elem);
 
