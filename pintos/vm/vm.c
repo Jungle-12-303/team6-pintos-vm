@@ -191,6 +191,7 @@ vm_get_frame (void) {
 /* 스택을 확장한다. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	
 }
 
 /* 쓰기 보호된 페이지에서 발생한 fault를 처리한다. */
@@ -201,11 +202,23 @@ vm_handle_wp (struct page *page UNUSED) {
 /* 성공 시 true를 반환한다. */
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+					 bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: fault를 검증한다. */
 	/* TODO: 여기에 코드를 작성하세요. */
+	
+	/* SONNY'S CODE */
+	if (not_present) { // 아직 할당x인 경우
+
+	}
+	else if (write | user) { // 할당은 되어있지만 권한 문제인 경우
+		
+	}
+
+	
+	/* SONNY'S CODE */
 
 	return vm_do_claim_page (page);
 }

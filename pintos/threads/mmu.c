@@ -224,7 +224,7 @@ pml4_activate (uint64_t *pml4) {
 
 /* pml4에서 사용자 가상 주소 UADDR에 대응하는 물리 주소를 찾는다.
  * 해당 물리 주소에 대응하는 커널 가상 주소를 반환하며,
- * UADDR이 매핑되어 있지 않으면 널 포인터를 반환한다. */
+ * UADDR이 물리 프레임과 매핑되어 있지 않으면 널 포인터를 반환한다. */
 void *
 pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	ASSERT (is_user_vaddr (uaddr));
