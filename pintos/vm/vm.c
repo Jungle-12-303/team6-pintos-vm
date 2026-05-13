@@ -141,7 +141,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 
 	/* SONNY'S CODE */
 	// 해시 테이블에 page 추가
-	if (0x400000 <= page->va <= USER_STACK) { // 유저 영역일 때
+	if (0x400000 <= page->va && page->va <= USER_STACK) { // 유저 영역일 때
 		succ = true;
 		hash_insert (&spt->hash_table, &page->hash_elem);
 	}
