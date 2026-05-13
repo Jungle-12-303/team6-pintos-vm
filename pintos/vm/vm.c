@@ -54,8 +54,7 @@ static struct frame *vm_evict_frame (void);
 /* vm_initializer : struct page *, void *를 인자로 받고 bool을 반환하는 함수 타입 */
 /* TODO load_segment 함수를 보고 aux 처리에 대한 로직 추가 필요*/
 bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
-		vm_initializer *init, void *aux) {
+vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
 
 	/* 이 함수에 VM_UNINIT 타입을 직접 넘기면 안됨 */
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
@@ -151,8 +150,11 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	ASSERT (spt != NULL)
+	ASSERT (page != NULL)
+	ASSERT (hash_delete(&spt->hash_table, &page->hash_elem) != NULL)
+	
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* 축출될 struct frame을 가져온다. */
@@ -255,13 +257,11 @@ vm_do_claim_page (struct page *page) {
 }
 
 /* 새로운 supplemental page table을 초기화한다. */
-void
+bool
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	/* SONNY'S CODE */
 	// 해시 초기화
-	if(!hash_init(&spt->hash_table, page_hash_func, page_less_func, NULL)) {
-		PANIC("failed hash_init -SONNY-");
-	}
+	return hash_init(&spt->hash_table, page_hash_func, page_less_func, NULL);
 	/* SONNY'S CODE */
 }
 

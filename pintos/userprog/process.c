@@ -177,7 +177,9 @@ initd (void *aux) {
 	curr->child_status = child;
 	free (info);
 #ifdef VM
-	supplemental_page_table_init (&curr->spt);
+	if(!supplemental_page_table_init (&curr->spt)) {
+		goto error;
+	}
 #endif
 
 	process_init ();
@@ -190,6 +192,14 @@ initd (void *aux) {
 		thread_exit ();
 	}
 	NOT_REACHED ();
+
+error:
+	palloc_free_page(file_name);
+	curr->exit_status = -1;
+	child->loaded = true;
+	child->load_success = false;
+	sema_up(&child->load_sema);
+	thread_exit();
 }
 
 /* 현재 프로세스를 `name'이라는 이름으로 복제한다.
@@ -294,7 +304,9 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 #ifdef VM
-	supplemental_page_table_init (&current->spt);
+	if (!supplemental_page_table_init (&current->spt)) {
+		goto error;
+	}
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
