@@ -214,20 +214,28 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	/* TODO: 여기에 코드를 작성하세요. */
 	
 	/* SONNY'S CODE */
-	if (not_present) { // 아직 할당x인 경우
-		if(spt_find_page(spt, addr) == NULL) { //spt에 페이지 없는 경우
-			vm_stack_growth(addr);
-			return vm_claim_page(addr);
-		}
-	}
-	else if (write | user) { // 할당은 되어있지만 권한 문제인 경우
+	// 이미 할당이 되었을 경우
+	if (not_present == false) {
 		return false;
 	}
 
-	
-	/* SONNY'S CODE */
+	// 권한 문제가 있을 경우
+	if (write | user) {
+		return false;
+	}
 
-	return vm_do_claim_page (page);
+	page = spt_find_page(spt, addr);
+
+	// SPT에 페이지가 있는 경우
+	if ( page != NULL) {
+		return vm_do_claim_page (page);
+	}
+
+	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
+	vm_stack_growth(addr);
+	struct page *new_page = spt_find_page(&spt->hash_table, addr);
+	return vm_do_claim_page(new_page);
+	/* SONNY'S CODE */
 }
 
 /* 페이지를 해제한다.
