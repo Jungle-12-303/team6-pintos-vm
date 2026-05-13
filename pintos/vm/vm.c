@@ -196,6 +196,9 @@ vm_get_frame (void) {
 /* 스택을 확장한다. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	/* SONNY'S CODE */
+	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
+	/* SONNY'S CODE */
 }
 
 /* 쓰기 보호된 페이지에서 발생한 fault를 처리한다. */
@@ -206,13 +209,36 @@ vm_handle_wp (struct page *page UNUSED) {
 /* 성공 시 true를 반환한다. */
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+					 bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: fault를 검증한다. */
 	/* TODO: 여기에 코드를 작성하세요. */
+	
+	/* SONNY'S CODE */
+	// 이미 할당이 되었을 경우
+	if (not_present == false) {
+		return false;
+	}
 
-	return vm_do_claim_page (page);
+	// 권한 문제가 있을 경우
+	if (write | user) {
+		return false;
+	}
+
+	page = spt_find_page(spt, addr);
+
+	// SPT에 페이지가 있는 경우
+	if ( page != NULL) {
+		return vm_do_claim_page (page);
+	}
+
+	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
+	vm_stack_growth(addr);
+	struct page *new_page = spt_find_page(&spt->hash_table, addr);
+	return vm_do_claim_page(new_page);
+	/* SONNY'S CODE */
 }
 
 /* 페이지를 해제한다.
@@ -228,6 +254,13 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
+
+	/* SONNY'S CODE */
+	page->va = va;
+	page->writable = 1;
+	struct supplemental_page_table *spt =  &(thread_current()->spt);
+	spt_insert_page(spt, page);
+	/* SONNY'S CODE */
 
 	return vm_do_claim_page (page);
 }
