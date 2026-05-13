@@ -385,6 +385,13 @@ process_exec (void *f_name) {
 	/* 먼저 현재 컨텍스트를 정리한다. */
 	process_cleanup ();
 
+	#ifdef VM
+	if (!supplemental_page_table_init(&curr->spt)) {
+		palloc_free_page (file_name);
+		return -1;
+	}
+	#endif
+
 	/* 그 다음 바이너리를 적재한다. */
 	success = load (file_name, &_if);
 
