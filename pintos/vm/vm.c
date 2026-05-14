@@ -13,10 +13,13 @@
 #include "../threads/mmu.h"
 /* SONNY'S CODE */
 
+#define STACK_MAX (1 << 20) // stack 최대값 1MB
+
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
+static bool is_stack_growth(void *addr, void *rsp);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -144,7 +147,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		return false;
 	}
 
-	if (page->va < PGSIZE || !is_user_vaddr(page->va) ) {
+	if ((uintptr_t)page->va < PGSIZE || !is_user_vaddr(page->va) ) {
 		return false;
 	}
 
@@ -249,7 +252,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	// write fault인데 read-only page면 거절
 	page = spt_find_page(spt, addr);
-	if ( write && !page->writable ) {
+	if (page != NULL && write && !page->writable ) {
 		return false;
 	}
 
@@ -259,10 +262,12 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 
 	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	if(true) {
+	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
+
+	if( is_stack_growth(addr, rsp) ) {
 		vm_stack_growth(addr);
-		struct page *new_page = spt_find_page(&spt->hash_table, addr);
-		return vm_do_claim_page(new_page);
+		struct page *new_page = spt_find_page(spt, addr);
+		return new_page != NULL && vm_do_claim_page(new_page);
 	}
 	/* SONNY'S CODE */
 
@@ -437,4 +442,15 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page);
+}
+
+static bool is_stack_growth(void *addr, void *rsp) {
+	uint8_t *fault_addr = addr;
+	uint8_t *stack_pointer = rsp;
+
+	return fault_addr != NULL
+		&& is_user_vaddr(fault_addr)
+		&& fault_addr < (uint8_t *) USER_STACK
+		&& fault_addr >= stack_pointer - 8
+		&& (uint8_t *) USER_STACK - (uint8_t *) pg_round_down(fault_addr) <= STACK_MAX;
 }

@@ -62,6 +62,7 @@ syscall_init (void) {
 /* 메인 시스템 콜 인터페이스. */
 void
 syscall_handler (struct intr_frame *f) {
+	thread_current()->user_rsp = (void *) f->rsp;
 	uint64_t number = f->R.rax;
 
 	switch (number) {
