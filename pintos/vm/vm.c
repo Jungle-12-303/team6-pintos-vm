@@ -448,7 +448,8 @@ static bool is_stack_growth(void *addr, void *rsp) {
 	uint8_t *fault_addr = addr;
 	uint8_t *stack_pointer = rsp;
 
-	return fault_addr != NULL
+	return stack_pointer != NULL
+		&& fault_addr != NULL
 		&& is_user_vaddr(fault_addr)
 		&& fault_addr < (uint8_t *) USER_STACK
 		&& fault_addr >= stack_pointer - 8
