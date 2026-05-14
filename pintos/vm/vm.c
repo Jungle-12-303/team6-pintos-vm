@@ -196,18 +196,17 @@ vm_evict_frame (void) {
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
 static struct frame *
 vm_get_frame (void) {
-	//struct frame *frame = NULL;
+	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채운다. */
 	/* 일단 PAL_USER로 SONNY'S CODE */
-	struct frame *frame = malloc(sizeof frame);
-	frame->kva = palloc_get_page(PAL_USER);
+	frame = palloc_get_page(PAL_USER);
 	if (frame->kva == NULL) {
 		/* 스왑 코드 작성 필요 */
 	}
 	/* SONNY'S CODE */
 
 	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
+	// ASSERT (frame->page == NULL);
 	return frame;
 }
 
@@ -270,15 +269,13 @@ vm_dealloc_page (struct page *page) {
 /* VA에 할당된 페이지를 claim한다. */
 bool
 vm_claim_page (void *va UNUSED) {
-	// struct page *page = NULL;
+	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
-	struct page *page = malloc(sizeof(struct page));
-
+	
 	/* SONNY'S CODE */
-	page->va = va;
-	page->writable = 1;
-	struct supplemental_page_table *spt =  &(thread_current()->spt);
-	spt_insert_page(spt, page);
+	struct supplemental_page_table *spt = &(thread_current()->spt);
+	page = spt_find_page(spt, va);
+
 	/* SONNY'S CODE */
 
 	return vm_do_claim_page (page);
@@ -291,11 +288,12 @@ vm_do_claim_page (struct page *page) {
 
 	/* 연결을 설정한다. */
 	frame->page = page;
+	//kva 설정을 해야됨
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
 	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
-
+	
 	return swap_in (page, frame->kva);
 }
 
