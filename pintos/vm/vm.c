@@ -214,9 +214,10 @@ SPT 등록
 claim
 pml4 매핑
 */
+	void* p_addr = pg_round_down(addr);
 
 	/* SONNY'S CODE */
-	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
+	vm_alloc_page(VM_ANON | VM_MARKER_0, p_addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
 	/* SONNY'S CODE */
 }
 
@@ -258,7 +259,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 
 	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	if( stack growth 가능한 주소 체크 ) {
+	if(true) {
 		vm_stack_growth(addr);
 		struct page *new_page = spt_find_page(&spt->hash_table, addr);
 		return vm_do_claim_page(new_page);
