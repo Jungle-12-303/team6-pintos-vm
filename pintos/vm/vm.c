@@ -147,7 +147,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		return false;
 	}
 
-	if (page->va < PGSIZE || !is_user_vaddr(page->va) ) {
+	if ((uintptr_t)page->va < PGSIZE || !is_user_vaddr(page->va) ) {
 		return false;
 	}
 
@@ -262,7 +262,9 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 
 	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	if( is_stack_growth(addr, (void *)f->rsp) ) {
+	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
+
+	if( is_stack_growth(addr, rsp) ) {
 		// !vm_stack_growth에서 claim까지 해주면 페이지를 찾고 할당해주는 부분 삭제 필요
 		vm_stack_growth(addr);
 		struct page *new_page = spt_find_page(spt, addr);
