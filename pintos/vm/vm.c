@@ -10,12 +10,16 @@
 /* SONNY'S CODE */
 // KENL_BASS를 사용하기 위한 import
 #include "../include/threads/vaddr.h"
+#include "../threads/mmu.h"
 /* SONNY'S CODE */
+
+#define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
+static bool is_stack_growth(void *addr, void *rsp);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -102,8 +106,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		   fault 때 사용할 정보를 저장한다. */
 		uninit_new (new_page, upage, init, type, aux, initializer);
 		new_page->writable = writable;
-		
+
 		/* TODO: Insert the page into the spt. */
+
 		if(!spt_insert_page (spt, new_page)) {
 			free(new_page);
 			return false;
@@ -136,18 +141,17 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: 이 함수를 채운다. */
 
-	/* SONNY'S CODE */
-	// 해시 테이블에 page 추가
-	if (0x400000 <= page->va && page->va <= USER_STACK) { // 유저 영역일 때
-		succ = true;
-		hash_insert (&spt->hash_table, &page->hash_elem);
+	
+	if (pg_ofs(page->va) != 0){
+		return false;
 	}
-	/* SONNY'S CODE */
 
-	return succ;
+	if ((uintptr_t)page->va < PGSIZE || !is_user_vaddr(page->va) ) {
+		return false;
+	}
+
+	return hash_insert(&spt->hash_table, &page->hash_elem) == NULL;
 }
 
 /* spt 테이블에서 페이지가 정확히 제거 됐는지 체크하고 page 할당을 해제 해준다.*/
@@ -183,21 +187,40 @@ vm_evict_frame (void) {
  * 사용 가능한 페이지가 없으면 페이지를 축출하고 그 프레임을 반환한다.
  * 이 함수는 항상 유효한 주소를 반환한다.
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
+
+ /* TODO frame이 꽉찼을 때 eviction/swap 추가 구현 필요 */
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채운다. */
+	struct frame *frame = malloc(sizeof *frame);
+	if (frame == NULL) {
+		return NULL;
+	}
 
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
+	frame->kva = palloc_get_page(PAL_USER);
+	if (frame->kva == NULL) {
+		free(frame);
+		return NULL;
+	}
+
+	frame->page = NULL;
 	return frame;
 }
 
 /* 스택을 확장한다. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+/*
+fault addr 검증
+addr page boundary로 내림
+SPT 등록
+claim
+pml4 매핑
+*/
+	void* p_addr = pg_round_down(addr);
+
 	/* SONNY'S CODE */
-	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
+	vm_alloc_page(VM_ANON | VM_MARKER_0, p_addr, 1); /* stack_growth인 경우 anon 타입, 쓰기 가능하도록 해야 함. */
 	/* SONNY'S CODE */
 }
 
@@ -222,12 +245,16 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		return false;
 	}
 
-	// 권한 문제가 있을 경우
-	if (write | user) {
+	// addr이 user 주소인지 확인
+	if (!is_user_vaddr(addr)) {
 		return false;
 	}
 
+	// write fault인데 read-only page면 거절
 	page = spt_find_page(spt, addr);
+	if (page != NULL && write && !page->writable ) {
+		return false;
+	}
 
 	// SPT에 페이지가 있는 경우
 	if ( page != NULL) {
@@ -235,10 +262,16 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 
 	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	vm_stack_growth(addr);
-	struct page *new_page = spt_find_page(&spt->hash_table, addr);
-	return vm_do_claim_page(new_page);
+	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
+
+	if( is_stack_growth(addr, rsp) ) {
+		vm_stack_growth(addr);
+		struct page *new_page = spt_find_page(spt, addr);
+		return new_page != NULL && vm_do_claim_page(new_page);
+	}
 	/* SONNY'S CODE */
+
+	return false;
 }
 
 /* 페이지를 해제한다.
@@ -254,12 +287,11 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채운다. */
-
+	
 	/* SONNY'S CODE */
-	page->va = va;
-	page->writable = 1;
-	struct supplemental_page_table *spt =  &(thread_current()->spt);
-	spt_insert_page(spt, page);
+	struct supplemental_page_table *spt = &(thread_current()->spt);
+	page = spt_find_page(spt, va);
+
 	/* SONNY'S CODE */
 
 	return vm_do_claim_page (page);
@@ -269,13 +301,17 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+	if(frame == NULL) {
+		return false;
+	}
 
 	/* 연결을 설정한다. */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
-
+	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+	
 	return swap_in (page, frame->kva);
 }
 
@@ -390,7 +426,7 @@ static uint64_t page_hash_func (const struct hash_elem *e, void *aux) {
 	struct page *p = hash_entry(e, struct page, hash_elem);
 	uint64_t hash = hash_bytes(&p->va, sizeof p->va);
 
-	printf ("[page_hash] va=%p hash=0x%llx\n", p->va, hash);
+	// printf ("[page_hash] va=%p hash=0x%llx\n", p->va, hash);
 
 	return hash;
 }
@@ -406,4 +442,16 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page);
+}
+
+static bool is_stack_growth(void *addr, void *rsp) {
+	uint8_t *fault_addr = addr;
+	uint8_t *stack_pointer = rsp;
+
+	return stack_pointer != NULL
+		&& fault_addr != NULL
+		&& is_user_vaddr(fault_addr)
+		&& fault_addr < (uint8_t *) USER_STACK
+		&& fault_addr >= stack_pointer - 8
+		&& (uint8_t *) USER_STACK - (uint8_t *) pg_round_down(fault_addr) <= STACK_MAX;
 }

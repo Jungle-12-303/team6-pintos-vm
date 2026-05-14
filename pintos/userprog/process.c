@@ -59,6 +59,13 @@ struct fork_info {
 	struct child_status *child;
 };
 
+struct lazy_load_info {
+	struct file *file; 		 /* 읽어올 실행파일 */
+	off_t ofs; 				 /* page 데이터가 시작되는 파일 offset */
+	size_t page_read_bytes;  /* pgae에 파일에서 읽어 넣을 byte 수  */
+	size_t page_zero_bytes;  /* page에서 0으로 채울 byte 수 */
+};
+
 /* initd와 다른 프로세스에서 공통으로 사용하는 프로세스 초기화 함수. */
 static void
 process_init (void) {
@@ -586,6 +593,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* 페이지 디렉터리를 할당하고 활성화한다. */
 	t->pml4 = pml4_create ();
+
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
@@ -594,8 +602,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	lock_acquire (&filesys_lock);
 	fs_locked = true;
 	file = filesys_open (program_name);
+
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", program_name);
 		goto done;
 	}
 
@@ -656,19 +664,23 @@ load (const char *file_name, struct intr_frame *if_) {
 					}
 					/* 실행파일의 어떤 데이터를 어떤 가상주소(page)에 올릴지 */
 					if (!load_segment (file, file_page, (void *) mem_page,
-								read_bytes, zero_bytes, writable))
-						goto done;
-				}
+								read_bytes, zero_bytes, writable)) {
+							
+							goto done;
+								}
+				} 
 				else
 					goto done;
 				break;
+				
 		}
 	}
 
 	/* 스택을 설정한다. */
-	if (!setup_stack (if_))
-		goto done;
 
+	if (!setup_stack (if_)) {
+		goto done;
+	}
 	/* 시작 주소. */
 	if_->rip = ehdr.e_entry;
 
@@ -894,6 +906,23 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 적재한다. */
 	/* TODO: 주소 VA에서 첫 페이지 폴트가 발생했을 때 호출된다. */
 	/* TODO: 이 함수를 호출할 때 VA를 사용할 수 있다. */
+	struct lazy_load_info *load_info = aux;
+	uint8_t *kva = page->frame->kva;
+
+	/* 파일의 ofs 위치부터 page_read_bytes만큼 읽어 frame 시작 주소에 채운다. */
+	/* 파일주소, 채울 buffer 주소(frame시작 주소), 읽을 size, 읽어올 위치 */
+	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
+
+	if(read != (off_t) load_info->page_read_bytes) {
+		free(load_info);
+		return false;
+	}
+
+	/* 읽지 않은 남은 부분 0으로 채우기 */
+	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	free(load_info);
+	
+	return true;
 }
 
 /* FILE의 오프셋 OFS에서 시작하는 세그먼트를 주소 UPAGE에 적재한다.
@@ -911,6 +940,7 @@ lazy_load_segment (struct page *page, void *aux) {
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
@@ -921,16 +951,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * PAGE_ZERO_BYTES 바이트는 0으로 채운다. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
 		/* TODO: lazy_load_segment에 정보를 넘기도록 aux를 설정한다. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		/* aux : page fault가 났을 때 lazy_load_segment가 파일 내용을 읽을 수 있도록 정보 묶음 */
+		struct lazy_load_info *aux = malloc(sizeof *aux);
+		if(aux == NULL) {
 			return false;
+		}
+
+		/* 현재 page를 나중에 채우기 위한 정보 저장 */
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
+
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+					writable, lazy_load_segment, aux)) {
+						free(aux);
+						return false;
+					}
 
 		/* 다음 페이지로 진행한다. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
+
 	}
 	return true;
 }
@@ -939,15 +985,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
-	/* TODO: stack_bottom(stack_start_point) 에 스택을 매핑하고 즉시 페이지를 claim한다. */
 	void *stack_start_point = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	/* TODO: 페이지가 스택임을 표시해야 한다. */
-	/* TODO: 여기에 코드를 작성한다. */
 	/* vm_alloc_page = vm_alloc_page_with_initializer 치환 */
 	/* stack page를 SPT에 등록하고 즉시 claim frame 할당 및 pml4 매핑 */
 	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_start_point, true) && vm_claim_page(stack_start_point)) {
-		/* TODO: 성공하면 그에 맞게 rsp를 설정한다. */
+
 		if_->rsp = USER_STACK;
 		success = true;
 	} else {

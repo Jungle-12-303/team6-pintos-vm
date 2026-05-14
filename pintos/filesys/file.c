@@ -81,6 +81,16 @@ file_read (struct file *file, void *buffer, off_t size) {
  * Returns the number of bytes actually read,
  * which may be less than SIZE if end of file is reached.
  * The file's current position is unaffected. */
+
+ /*
+ FILE의 FILE_OFS(offset) 위치부터 시작해서
+SIZE 바이트를 읽어 BUFFER에 저장한다.
+
+반환값은 실제로 읽은 바이트 수이다.
+파일 끝(EOF)에 도달하면 SIZE보다 적게 읽을 수도 있다.
+
+이 함수는 파일의 현재 위치(current position, offset)를 변경하지 않는다.
+ */ 
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
 	return inode_read_at (file->inode, buffer, size, file_ofs);

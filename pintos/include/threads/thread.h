@@ -120,6 +120,7 @@ struct thread {
 	int next_fd;                        /* 다음 디스크립터 번호. */
 	struct file *running_file;          /* 쓰기가 금지된 실행 파일. */
 	int exit_status;                    /* 종료 시 보고할 상태. */
+	void *user_rsp;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
