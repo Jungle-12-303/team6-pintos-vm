@@ -59,6 +59,13 @@ struct fork_info {
 	struct child_status *child;
 };
 
+struct lazy_load_info {
+	struct file *file; 		 /* 읽어올 실행파일 */
+	off_t ofs; 				 /* page 데이터가 시작되는 파일 offset */
+	size_t page_read_bytes;  /* pgae에 파일에서 읽어 넣을 byte 수  */
+	size_t page_zero_bytes;  /* page에서 0으로 채울 byte 수 */
+};
+
 /* initd와 다른 프로세스에서 공통으로 사용하는 프로세스 초기화 함수. */
 static void
 process_init (void) {
@@ -899,6 +906,23 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 적재한다. */
 	/* TODO: 주소 VA에서 첫 페이지 폴트가 발생했을 때 호출된다. */
 	/* TODO: 이 함수를 호출할 때 VA를 사용할 수 있다. */
+	struct lazy_load_info *load_info = aux;
+	uint8_t *kva = page->frame->kva;
+
+	/* 파일의 ofs 위치부터 page_read_bytes만큼 읽어 frame 시작 주소에 채운다. */
+	/* 파일주소, 채울 buffer 주소(frame시작 주소), 읽을 size, 읽어올 위치 */
+	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
+
+	if(read != (off_t) load_info->page_read_bytes) {
+		free(load_info);
+		return false;
+	}
+
+	/* 읽지 않은 남은 부분 0으로 채우기 */
+	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	free(load_info);
+	
+	return true;
 }
 
 /* FILE의 오프셋 OFS에서 시작하는 세그먼트를 주소 UPAGE에 적재한다.
@@ -927,11 +951,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * PAGE_ZERO_BYTES 바이트는 0으로 채운다. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
 		/* TODO: lazy_load_segment에 정보를 넘기도록 aux를 설정한다. */
-		void *aux = NULL;
+		/* aux : page fault가 났을 때 lazy_load_segment가 파일 내용을 읽을 수 있도록 정보 묶음 */
+		struct lazy_load_info *aux = malloc(sizeof *aux);
+		if(aux == NULL) {
+			return false;
+		}
+
+		/* 현재 page를 나중에 채우기 위한 정보 저장 */
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, aux)) {
+						free(aux);
 						return false;
 					}
 
@@ -939,6 +975,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
+
 	}
 	return true;
 }
