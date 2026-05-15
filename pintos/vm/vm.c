@@ -450,10 +450,9 @@ static bool is_stack_growth(void *addr, void *rsp) {
 /* vm_stack_growth (void *addr UNUSED) */
 bool
 vm_claim_or_grow_page(void *addr, void *rsp) {
-    void *page_addr = pg_round_down(addr);
     struct supplemental_page_table *spt = &thread_current()->spt;
-    struct page *page = spt_find_page(spt, page_addr);
-    void *kva = pml4_get_page(thread_current()->pml4, page_addr);
+    struct page *page = spt_find_page(spt, addr);
+    void *kva = pml4_get_page(thread_current()->pml4, addr);
 
 	/* plm4매핑이 있는지 여부 확인 */
     if (kva != NULL) {
@@ -462,13 +461,13 @@ vm_claim_or_grow_page(void *addr, void *rsp) {
 
 	/* spt에 페이지가 있는지 확인 */
     if (page != NULL) {
-        return vm_claim_page(page_addr);
+        return vm_claim_page(addr);
     }
 
 	/* stack growth 여부 확인 후 있으면 claim */
     if (is_stack_growth(addr, rsp)) {
-        vm_stack_growth(page_addr);
-        return vm_claim_page(page_addr);
+        vm_stack_growth(addr);  
+        return vm_claim_page(addr);
     }
 
     return false;

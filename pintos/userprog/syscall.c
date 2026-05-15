@@ -234,13 +234,14 @@ validate_user_buffer (const void *buffer, unsigned size) {
 	uintptr_t start = (uintptr_t) buffer;
 	uintptr_t end = start + size;
 	uintptr_t page;
-	struct page *userpage = spt_find_page(&thread_current()->spt, (void*)buffer);
-
+	
 	if (size == 0)
 		return;
+
 	if (buffer == NULL || end < start)
 		syscall_exit (-1);
-
+		
+	struct page *userpage = spt_find_page(&thread_current()->spt, (void*)buffer);
 	/* 현재 페이지가 writable인지 확인하기 */
 	if (userpage != NULL && !userpage->writable) {
 		syscall_exit(-1);
@@ -249,17 +250,24 @@ validate_user_buffer (const void *buffer, unsigned size) {
 	/* buffer가 걸쳐있는 모든 page를 page 단위로 검사 */
 	for (page = start; page < end; page = (page & ~PGMASK) + PGSIZE) {
 		/* pml4 매핑 확인 stack growth helper 함수 */
+		/* 매핑이 안 되어있으면 stack growth인지 확인 후 claim */
+#ifdef VM
 		if (!vm_claim_or_grow_page(buffer, thread_current()->user_rsp)) {
 			syscall_exit(-1);
 		}
+#else
 		validate_user_addr ((const void *) page);
+#endif	
 	}
 
+#ifdef VM
 	/* buffer의 마지막 byte 주소까지 유효한지 추가 검사 */
 	if (!vm_claim_or_grow_page((void *) (end - 1), thread_current()->user_rsp)){
     	syscall_exit(-1);
 	}
+#else
 	validate_user_addr ((const void *) (end - 1));
+#endif
 }
 
 static void
