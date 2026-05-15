@@ -466,7 +466,7 @@ vm_claim_or_grow_page(void *addr, void *rsp) {
     }
 
 	/* stack growth 여부 확인 후 있으면 claim */
-    if (is_stack_growth(page_addr, rsp)) {
+    if (is_stack_growth(addr, rsp)) {
         vm_stack_growth(page_addr);
         return vm_claim_page(page_addr);
     }
