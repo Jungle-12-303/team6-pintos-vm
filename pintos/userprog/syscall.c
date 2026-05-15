@@ -18,6 +18,7 @@
 #include "lib/kernel/stdio.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -225,18 +226,39 @@ validate_user_addr (const void *uaddr) {
 		syscall_exit (-1);
 }
 
+/* 유저가 넘긴 buffer 주소 범위(~ buffer + size)가 정상적인 user memory인지 검사 */
+/* 주소 범위가 유저 영역인지, 실제로 매핑이 되어있는지 확인 */
 static void
 validate_user_buffer (const void *buffer, unsigned size) {
+	/* 시작, 끝 주소 계산 */
 	uintptr_t start = (uintptr_t) buffer;
 	uintptr_t end = start + size;
 	uintptr_t page;
+	struct page *userpage = spt_find_page(&thread_current()->spt, (void*)buffer);
 
 	if (size == 0)
 		return;
 	if (buffer == NULL || end < start)
 		syscall_exit (-1);
-	for (page = start; page < end; page = (page & ~PGMASK) + PGSIZE)
+
+	/* 현재 페이지가 writable인지 확인하기 */
+	if (userpage != NULL && !userpage->writable) {
+		syscall_exit(-1);
+	}
+
+	/* buffer가 걸쳐있는 모든 page를 page 단위로 검사 */
+	for (page = start; page < end; page = (page & ~PGMASK) + PGSIZE) {
+		/* pml4 매핑 확인 stack growth helper 함수 */
+		if (!vm_claim_or_grow_page(buffer, thread_current()->user_rsp)) {
+			syscall_exit(-1);
+		}
 		validate_user_addr ((const void *) page);
+	}
+
+	/* buffer의 마지막 byte 주소까지 유효한지 추가 검사 */
+	if (!vm_claim_or_grow_page((void *) (end - 1), thread_current()->user_rsp)){
+    	syscall_exit(-1);
+	}
 	validate_user_addr ((const void *) (end - 1));
 }
 

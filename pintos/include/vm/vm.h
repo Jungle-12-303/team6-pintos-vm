@@ -117,4 +117,8 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+/* is_stack_growth, page claim helper 함수 */
+bool vm_claim_or_grow_page(void *addr, void *rsp);
+
+
 #endif  /* VM_VM_H */
