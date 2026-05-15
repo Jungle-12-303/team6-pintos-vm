@@ -256,23 +256,11 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	if (page != NULL && write && !page->writable ) {
 		return false;
 	}
-
-	// SPT에 페이지가 있는 경우
-	if ( page != NULL) {
-		return vm_do_claim_page (page);
-	}
-
-	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
-
-	if( is_stack_growth(addr, rsp) ) {
-		vm_stack_growth(addr);
-		struct page *new_page = spt_find_page(spt, addr);
-		return new_page != NULL && vm_do_claim_page(new_page);
-	}
 	/* SONNY'S CODE */
 
-	return false;
+	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
+	return vm_claim_or_grow_page(addr, rsp);
+	
 }
 
 /* 페이지를 해제한다.
