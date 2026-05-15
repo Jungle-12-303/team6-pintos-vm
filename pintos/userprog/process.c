@@ -662,7 +662,9 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
-					/* 실행파일의 어떤 데이터를 어떤 가상주소(page)에 올릴지 */
+
+					/* load가 넘겨준 segment 하나를 page 단위로 쪼개서,
+  					   각 page를 어떻게 채울지 */
 					if (!load_segment (file, file_page, (void *) mem_page,
 								read_bytes, zero_bytes, writable)) {
 							

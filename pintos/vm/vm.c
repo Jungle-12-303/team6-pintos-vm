@@ -20,6 +20,7 @@ static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
 static bool is_stack_growth(void *addr, void *rsp);
+bool vm_claim_or_grow_page(void *addr, void *rsp);
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -255,23 +256,11 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	if (page != NULL && write && !page->writable ) {
 		return false;
 	}
-
-	// SPT에 페이지가 있는 경우
-	if ( page != NULL) {
-		return vm_do_claim_page (page);
-	}
-
-	// SPT에 페이지가 없는 경우, 스택 확장 후, 프레임 할당
-	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
-
-	if( is_stack_growth(addr, rsp) ) {
-		vm_stack_growth(addr);
-		struct page *new_page = spt_find_page(spt, addr);
-		return new_page != NULL && vm_do_claim_page(new_page);
-	}
 	/* SONNY'S CODE */
 
-	return false;
+	void *rsp = user ? (void *) f->rsp : thread_current()->user_rsp;
+	return vm_claim_or_grow_page(addr, rsp);
+	
 }
 
 /* 페이지를 해제한다.
@@ -454,4 +443,32 @@ static bool is_stack_growth(void *addr, void *rsp) {
 		&& fault_addr < (uint8_t *) USER_STACK
 		&& fault_addr >= stack_pointer - 8
 		&& (uint8_t *) USER_STACK - (uint8_t *) pg_round_down(fault_addr) <= STACK_MAX;
+}
+
+/* stack growth 여부 체크 후 page claim */
+/* bool is_stack_growth(void *addr, void *rsp) */
+/* vm_stack_growth (void *addr UNUSED) */
+bool
+vm_claim_or_grow_page(void *addr, void *rsp) {
+    struct supplemental_page_table *spt = &thread_current()->spt;
+    struct page *page = spt_find_page(spt, addr);
+    void *kva = pml4_get_page(thread_current()->pml4, addr);
+
+	/* plm4매핑이 있는지 여부 확인 */
+    if (kva != NULL) {
+        return true;
+    }
+
+	/* spt에 페이지가 있는지 확인 */
+    if (page != NULL) {
+        return vm_claim_page(addr);
+    }
+
+	/* stack growth 여부 확인 후 있으면 claim */
+    if (is_stack_growth(addr, rsp)) {
+        vm_stack_growth(addr);  
+        return vm_claim_page(addr);
+    }
+
+    return false;
 }
