@@ -67,10 +67,17 @@ struct page {
 };
 
 /* "frame"의 표현 */
+/**
+ * @brief * elem - frame을 frame table에 넣기 위한 연결 노드
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
 struct frame {
 	void *kva;
 	struct page *page;
 	bool pinned;
+	struct list_elem elem;
 };
 
 /* 페이지 연산을 위한 함수 테이블.

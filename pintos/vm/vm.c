@@ -13,6 +13,14 @@
 #include "../threads/mmu.h"
 /* SONNY'S CODE */
 
+/**
+ * @brief lock init을 위한 synch.h, list init을 위한 list.h include
+ * @author 임가인
+ * @date 2026-05-16
+ */
+#include "./threads/synch.h"
+#include "lib/kernel/list.h"
+
 #define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -21,6 +29,22 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
 static bool is_stack_growth(void *addr, void *rsp);
 bool vm_claim_or_grow_page(void *addr, void *rsp);
+
+/**
+ * @brief frame들을 관리하는 전역 frame_table
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
+static struct list frame_table;
+
+/**
+ * @brief frame_table을 동시에 건드리는 상황을 막기 위한 lock
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
+static struct lock frame_lock;
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -35,6 +59,10 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* 위 줄들은 수정하지 마세요. */
 	/* TODO: 여기에 코드를 작성하세요. */
+
+	/* frame_table, frame_lock 초기화 */
+	list_init(&frame_table);
+	lock_init(&frame_lock);
 }
 
 /* 페이지의 타입을 가져온다. 이 함수는 페이지가 초기화된 뒤의 타입을 알고 싶을 때 유용하다.
@@ -204,7 +232,26 @@ vm_get_frame (void) {
 		return NULL;
 	}
 
+	/**
+	 * @brief 생성된 frame field 세팅
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-16
+	 */
 	frame->page = NULL;
+	frame->pinned = false;
+
+	/**
+	 * @brief 정상적으로 생성된 frame만(kva) 전역 frame_table에 넣고
+	 *  추가 되는 동안 lock을 걸어 접근이 동시에 이루어지지 않도록 보호
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-16
+	 */
+	lock_acquire(&frame_lock);
+	list_push_back(&frame_table, &frame->elem);
+	lock_release(&frame_lock);
+
 	return frame;
 }
 
