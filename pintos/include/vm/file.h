@@ -14,9 +14,11 @@ enum vm_type;
  */
 struct file_page {
 	struct file *file;
-	off_t offset;
-	char* file_name; /* file_name으로 할 지, program_name으로 해야 할 지 고민 중 */
-	void *aux;
+	off_t ofs;
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+	void* start;
+	void* end;
 };
 
 void vm_file_init (void);
