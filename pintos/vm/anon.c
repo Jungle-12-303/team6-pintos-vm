@@ -18,10 +18,18 @@ static const struct page_operations anon_ops = {
 };
 
 /* Initialize the data for anonymous pages */
+/**
+ * @brief 익명 페이지 시스템 전체에서 공유할 스왑 자원을 초기화 하는 함수
+ * 
+ * @author hojun-lee99
+ * @date 2026-05-16
+ */
 void
 vm_anon_init (void) {
-	/* TODO: Set up the swap_disk. */
+	// disk swap 영역 획득
 	swap_disk = NULL;
+	swap_disk = disk_get(1, 1);
+	ASSERT(swap_disk != NULL);
 }
 
 /* Initialize the file mapping */
