@@ -1,10 +1,14 @@
 #ifndef VM_ANON_H
 #define VM_ANON_H
 #include "vm/vm.h"
+
+#define SWAP_SLOT_NONE SIZE_MAX
+
 struct page;
 enum vm_type;
 
 struct anon_page {
+    size_t swap_slot;
 };
 
 void vm_anon_init (void);
