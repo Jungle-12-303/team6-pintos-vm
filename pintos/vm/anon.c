@@ -45,6 +45,8 @@ vm_anon_init (void) {
 
 	// swap table 생성 및 swap table lock 초기화
 	swap_table = bitmap_create(swap_slot_count);
+	ASSERT(swap_table != NULL);
+	
 	lock_init(&swap_lock);
 }
 
@@ -53,8 +55,8 @@ bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &anon_ops;
-
-	struct anon_page *anon_page = &page->anon;
+	page->anon.swap_slot = SWAP_SLOT_NONE;
+	return true;
 }
 
 /* Swap in the page by read contents from the swap disk. */
