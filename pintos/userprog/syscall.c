@@ -226,12 +226,19 @@ syscall_handler (struct intr_frame *f) {
 
 		case SYS_MMAP:
 			struct fd_entry *fd = find_fd ((int) SYS_ARG4);
-			if (fd != NULL) {
-				// lock 필요한가?
-				void *addr = do_mmap ((void*) SYS_ARG1, (size_t) SYS_ARG2, (int) SYS_ARG3, fd->file, (off_t) SYS_ARG5);
-				if (addr == NULL) syscall_exit(-1);
+
+			// lock 필요한가?
+			if (fd == NULL) {
+				syscall_exit(-1);
 			}
-		
+
+			void *addr = do_mmap ((void*) SYS_ARG1, (size_t) SYS_ARG2, (int) SYS_ARG3, fd->file, (off_t) SYS_ARG5);
+			if (addr == NULL) {
+				syscall_exit(-1);
+			}
+
+			f->R.rax = addr;
+
 			break;
 
 		case SYS_MUNMAP:
