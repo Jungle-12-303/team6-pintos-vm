@@ -13,6 +13,12 @@
 #include "../threads/mmu.h"
 /* SONNY'S CODE */
 
+/**
+ * @brief lock init을 위한 synch.h include
+ * @author 임가인
+ * @date 2026-05-16
+ */
+#include "./threads/synch.h"
 #define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -35,6 +41,10 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* 위 줄들은 수정하지 마세요. */
 	/* TODO: 여기에 코드를 작성하세요. */
+
+	/* frame_table, frame_lock init */
+	list_init(&frame_table);
+	lock_init(&frame_lock);
 }
 
 /* 페이지의 타입을 가져온다. 이 함수는 페이지가 초기화된 뒤의 타입을 알고 싶을 때 유용하다.
