@@ -102,22 +102,6 @@ struct supplemental_page_table {
 	struct hash hash_table;
 };
 
-/**
- * @brief frame들을 관리하는 전역 frame_table
- * 
- * @author 임가인
- * @date 2026-05-16
- */
-static struct list frame_table;
-
-/**
- * @brief frame_table을 동시에 건드리는 상황을 막기 위한 lock
- * 
- * @author 임가인
- * @date 2026-05-16
- */
-static struct lock frame_lock;
-
 #include "threads/thread.h"
 bool supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,

@@ -14,11 +14,13 @@
 /* SONNY'S CODE */
 
 /**
- * @brief lock init을 위한 synch.h include
+ * @brief lock init을 위한 synch.h, list init을 위한 list.h include
  * @author 임가인
  * @date 2026-05-16
  */
 #include "./threads/synch.h"
+#include "lib/kernel/list.h"
+
 #define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -27,6 +29,22 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED);
 static bool is_stack_growth(void *addr, void *rsp);
 bool vm_claim_or_grow_page(void *addr, void *rsp);
+
+/**
+ * @brief frame들을 관리하는 전역 frame_table
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
+static struct list frame_table;
+
+/**
+ * @brief frame_table을 동시에 건드리는 상황을 막기 위한 lock
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
+static struct lock frame_lock;
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
