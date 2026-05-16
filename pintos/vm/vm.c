@@ -42,7 +42,7 @@ vm_init (void) {
 	/* 위 줄들은 수정하지 마세요. */
 	/* TODO: 여기에 코드를 작성하세요. */
 
-	/* frame_table, frame_lock init */
+	/* frame_table, frame_lock 초기화 */
 	list_init(&frame_table);
 	lock_init(&frame_lock);
 }
@@ -214,7 +214,26 @@ vm_get_frame (void) {
 		return NULL;
 	}
 
+	/**
+	 * @brief 생성된 frame field 세팅
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-16
+	 */
 	frame->page = NULL;
+	frame->pinned = false;
+
+	/**
+	 * @brief 정상적으로 생성된 frame만(kva) 전역 frame_table에 넣고
+	 *  추가 되는 동안 lock을 걸어 접근이 동시에 이루어지지 않도록 보호
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-16
+	 */
+	lock_acquire(&frame_lock);
+	list_push_back(&frame_table, &frame->elem);
+	lock_release(&frame_lock);
+
 	return frame;
 }
 
