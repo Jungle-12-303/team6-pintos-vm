@@ -2,12 +2,20 @@
 
 #include "vm/vm.h"
 #include "devices/disk.h"
+#include <bitmap.h>
+#include "threads/synch.h"
+#include "threads/vaddr.h"
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
 static bool anon_swap_in (struct page *page, void *kva);
 static bool anon_swap_out (struct page *page);
 static void anon_destroy (struct page *page);
+/* 추가한 정적전역 변수 */
+static struct bitmap *swap_table;
+static struct lock swap_lock;
+
+
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations anon_ops = {
@@ -30,6 +38,14 @@ vm_anon_init (void) {
 	swap_disk = NULL;
 	swap_disk = disk_get(1, 1);
 	ASSERT(swap_disk != NULL);
+
+	// 한 페이지에 필요한 디스크 섹터 수, swap disk에 저장 가능한 페이지 수
+	size_t sector_per_page = PGSIZE / DISK_SECTOR_SIZE;
+	size_t swap_slot_count = disk_size(swap_disk) / sector_per_page;
+
+	// swap table 생성 및 swap table lock 초기화
+	swap_table = bitmap_create(swap_slot_count);
+	lock_init(&swap_lock);
 }
 
 /* Initialize the file mapping */
