@@ -51,7 +51,14 @@ struct page {
 	/* 직접 구현할 부분. */
 	struct hash_elem hash_elem;
 	bool writable;
-  
+	
+	/**
+	 * @brief page를 가지고 있는 owner thread를 역참조하여 thread의 멤버에 접근
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-16
+	 */
+	struct thread *owner;
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	/* 타입별 데이터는 union 안에 묶여 있다.
