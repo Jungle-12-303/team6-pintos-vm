@@ -2,6 +2,10 @@
 
 #include "vm/vm.h"
 
+/* SONNY'S CODE */
+#include "threads/vaddr.h"
+/* SONNY'S CODE */
+
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
 static void file_backed_destroy (struct page *page);
@@ -20,18 +24,37 @@ vm_file_init (void) {
 }
 
 /* 파일 기반 페이지를 초기화합니다 */
+/**
+ * @brief 
+ * 
+ * @param page 
+ * @param type 
+ * @param kva 
+ * @return true 
+ * @return false 
+ * @author iamnuked
+ * @date 2026-05-16
+ */
 bool
-file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
+file_backed_initializer (struct page *page, enum vm_type type, void *kva) { // vm_type 매개변수는 왜 필요하지?
 	/* 핸들러를 설정합니다 */
 	page->operations = &file_ops;
 
 	struct file_page *file_page = &page->file;
+
+	/* SONNY'S CODE */
+	page->file.file = 
+
+
+	/* SONNY'S CODE */
 }
 
 /* 파일에서 내용을 읽어 페이지를 스왑 인합니다. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page UNUSED = &page->file;	
+
+
 }
 
 /* 내용을 파일에 다시 써서 페이지를 스왑 아웃합니다. */
@@ -47,9 +70,32 @@ file_backed_destroy (struct page *page) {
 }
 
 /* mmap을 수행합니다 */
+/**
+ * @brief 
+ * 
+ * @param addr 
+ * @param length 
+ * @param writable 
+ * @param file 
+ * @param offset 
+ * @return void* 
+ * @author iamnuked
+ * @date 2026-05-16
+ */
 void *
-do_mmap (void *addr, size_t length, int writable,
-		struct file *file, off_t offset) {
+do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offset) {
+	/* 인자 검증 
+	1. addr 정상 주소 확인
+	2. file 정상인지 확인 (NULL 체크)
+	3. 파일 길이 확인
+	*/
+	if
+
+
+	
+	if (vm_alloc_page_with_initializer(VM_FILE, addr, writable, file_backed_initializer, NULL)) {
+		// file_read_at(file, length, page->file.page_read_bytes, offset);
+	}
 }
 
 /* munmap을 수행합니다 */
