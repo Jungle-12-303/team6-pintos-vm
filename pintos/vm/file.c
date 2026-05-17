@@ -57,16 +57,16 @@ vm_file_init (void) {
  * @date 2026-05-16
  */
 bool
-file_backed_initializer (struct page *page, enum vm_type type, void *kva) { // vm_type 매개변수는 왜 필요하지?
+file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
+	ASSERT(VM_TYPE(type) == VM_FILE);
+
 	/* 핸들러를 설정합니다 */
 	page->operations = &file_ops;
 
 	struct file_page *file_page = &page->file;
 
 	/* SONNY'S CODE */
-
-
-
+	return true;
 	/* SONNY'S CODE */
 }
 
@@ -111,10 +111,23 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 
+	
 	/* 인자 검증 */
 	
 	/* length 가 0인지 확인*/
 	if (length == 0) {
+		return NULL;
+	}
+
+	/* 정상 파일인지 체크 */
+	if (file == NULL) {
+		return NULL;
+	}
+
+	off_t file_size = file_length(file);
+
+	/* 파일 크기가 offset보다 큰지 확인 */
+	if (file_size <= offset) {
 		return NULL;
 	}
 
@@ -128,31 +141,32 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		return NULL;
 	}
 
-	/* 정상 파일인지 체크 */
-	if (file == NULL) {
-		return NULL;
-	}
+	uint8_t *start = addr;
+	uint8_t *end = start + length;
 
 	/* 이미 사용중인 페이지인지 체크 */
-	for (void* curr_addr = addr; curr_addr < addr + length; curr_addr = curr_addr + PGSIZE) {
+	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
 		if (spt_find_page(spt, curr_addr) != NULL) {
 			return NULL;
 		}
 	}
 
-	
+	uint32_t read_bytes = file_size - offset;
+
+	/* 읽은 파일이 할당할 길이보다 길 경우 초과된 부분 잘라내기 */
+	if (read_bytes > length) {
+		read_bytes = length;
+	}
 
 	/* SPT에 페이지 정보 등록 */
-	uint32_t read_bytes = length;
-	uint32_t zero_bytes = PGSIZE - offset;
-	for (void* curr_addr = addr; curr_addr < (uint8_t*)addr + length; curr_addr = (uint8_t*)curr_addr + PGSIZE) {
+	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
 
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		struct lazy_load_info *aux = malloc(sizeof *aux);
 		if(aux == NULL) {
-			return false;
+			return NULL;
 		}
 		
 
@@ -166,7 +180,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 			return NULL;
 		}
 		read_bytes -= page_read_bytes;
-		zero_bytes -= page_zero_bytes;
 		offset += page_read_bytes;
 	}
 
@@ -188,6 +201,19 @@ do_munmap (void *addr) {
 bool
 lazy_load_file (struct page *page, void *aux) {
 	// TODO 함수를 구현해야됨
+	struct lazy_load_info *load_info = aux;
+	uint8_t *kva = page->frame->kva;
 
+	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
+
+	if(read != (off_t) load_info->page_read_bytes) {
+		free(load_info);
+		return false;
+	}
+
+	/* 읽지 않은 남은 부분 0으로 채우기 */
+	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	free(load_info);
+	
 	return true;
 }
