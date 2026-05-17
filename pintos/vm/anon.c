@@ -100,7 +100,7 @@ anon_swap_in (struct page *page, void *kva) {
 	}
 
 	lock_acquire(&swap_lock);
-	bitmap_flip(swap_table, slot);
+	bitmap_reset(swap_table, slot);
 	lock_release(&swap_lock);
 
 	page->anon.swap_slot = SWAP_SLOT_NONE;
