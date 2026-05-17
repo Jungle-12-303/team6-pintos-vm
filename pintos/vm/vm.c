@@ -267,7 +267,6 @@ vm_evict_frame (void) {
  * 이 함수는 항상 유효한 주소를 반환한다.
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
 
- /* TODO frame이 꽉찼을 때 eviction/swap 추가 구현 필요 */
 static struct frame *
 vm_get_frame (void) {
 	/* TODO: 이 함수를 채운다. */
@@ -277,9 +276,17 @@ vm_get_frame (void) {
 	}
 
 	frame->kva = palloc_get_page(PAL_USER);
+
+	/* 새 frame을 만들 수 없으면 기존 frame을 eviction으로 확보한다. */
+	/**
+	 * @brief palloc 실패시 eviction 함수 실행으로 frame 선정
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-17
+	 */
 	if (frame->kva == NULL) {
 		free(frame);
-		return NULL;
+		return vm_evict_frame();
 	}
 
 	/**
@@ -293,7 +300,7 @@ vm_get_frame (void) {
 
 	/**
 	 * @brief 정상적으로 생성된 frame만(kva) 전역 frame_table에 넣고
-	 *  추가 되는 동안 lock을 걸어 접근이 동시에 이루어지지 않도록 보호
+	 *  추가 되는 동안 lock을 걸어 frame_table 리스트 삽입 중 동시 수정 방지
 	 * 
 	 * @author 임가인
 	 * @date 2026-05-16
