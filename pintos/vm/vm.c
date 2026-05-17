@@ -438,7 +438,14 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 				src_page->uninit.aux,
 				src_page->uninit.page_initializer);
 			dst_page->writable = src_page->writable;
-
+			/**
+			 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
+			 * 
+			 * @author 임가인
+			 * @date 2026-05-17
+			 */
+			dst_page->owner = thread_current();
+			
 			if (!spt_insert_page (dst, dst_page)) {
 				free (dst_page);
 				return false;
@@ -469,6 +476,14 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 
 		uninit_new (dst_page, src_page->va, NULL, type, NULL, initializer);
 		dst_page->writable = src_page->writable;
+
+		/**
+		 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
+		 * 
+		 * @author 임가인
+		 * @date 2026-05-17
+		 */
+		dst_page->owner = thread_current();
 
 		// 목적지 spt에 페이지 추가
 		if (!spt_insert_page (dst, dst_page)) {
