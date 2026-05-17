@@ -53,6 +53,7 @@ vm_anon_init (void) {
 /* Initialize the file mapping */
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
+	ASSERT(VM_TYPE(type) == VM_ANON);
 	/* Set up the handler */
 	page->operations = &anon_ops;
 	page->anon.swap_slot = SWAP_SLOT_NONE;

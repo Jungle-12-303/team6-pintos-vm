@@ -8,6 +8,8 @@
 
 #include "vm/vm.h"
 #include "vm/uninit.h"
+#include "threads/vaddr.h"
+#include <string.h>
 
 static bool uninit_initialize (struct page *page, void *kva);
 static void uninit_destroy (struct page *page);
@@ -39,8 +41,16 @@ uninit_new (struct page *page, void *va, vm_initializer *init, enum vm_type type
 	};
 }
 
-
-/* 첫 번째 fault에서 페이지를 초기화한다. */
+/**
+ * @brief 첫 번째 fault에서 페이지를 초기화한다.
+ * 
+ * @param page 
+ * @param kva 
+ * @return true 
+ * @return false 
+ * @author hojun-lee99
+ * @date 2026-05-16
+ */
 static bool
 uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;
@@ -48,10 +58,25 @@ uninit_initialize (struct page *page, void *kva) {
 	/* page_initialize가 값을 덮어쓸 수 있으므로 먼저 가져온다. */
 	vm_initializer *init = uninit->init;
 	void *aux = uninit->aux;
+	enum vm_type type = uninit->type;
 
-	/* TODO: 이 함수를 수정해야 할 수도 있다. */
-	return uninit->page_initializer (page, uninit->type, kva) &&
-		(init ? init (page, aux) : true);
+	// page_initializer에 맞춰 페이지 타입 init
+	// 각 페이지 page_initializer에서 false 반환되면
+	if (!uninit->page_initializer (page, type, kva)) {
+		return false;
+	}
+
+	// init이 있으면 init 호출해 페이지에 실제 내용을 채우고 반환
+	if (init != NULL) {
+		return init(page, aux);
+	}
+
+	/* init이 없고, ANON 타입이면 메모리를 0으로 초기화 */
+	if (VM_TYPE(type) == VM_ANON) {
+		memset(kva, 0, PGSIZE);
+	}
+
+	return true;
 }
 
 /* uninit_page가 보유한 자원을 해제한다. 대부분의 페이지는 다른 페이지 객체로 변환되지만,

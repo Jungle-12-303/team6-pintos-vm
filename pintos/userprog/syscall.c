@@ -46,6 +46,21 @@ struct lock filesys_lock;
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL 진입 주소. */
 #define MSR_SYSCALL_MASK 0xc0000084 /* eflags 마스크. */
 
+
+/**
+ * @brief 레지스터 값 찾아서 넣기 귀찮아서 만든 메크로
+ * 
+ * @author iamnuked
+ * @date 2026-05-16
+ */
+#define SYS_RET f->R.rax
+#define SYS_ARG1 f->R.rdi
+#define SYS_ARG2 f->R.rsi
+#define SYS_ARG3 f->R.rdx
+#define SYS_ARG4 f->R.r10
+#define SYS_ARG5 f->R.r8
+#define SYS_ARG6 f->R.r9
+
 void
 syscall_init (void) {
 	lock_init (&filesys_lock);
@@ -208,6 +223,27 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_CLOSE:
 			close_fd ((int) f->R.rdi);
 			break;
+
+		case SYS_MMAP:
+			struct fd_entry *fd = find_fd ((int) SYS_ARG4);
+
+			// lock 필요한가?
+			if (fd == NULL) {
+				syscall_exit(-1);
+			}
+
+			void *addr = do_mmap ((void*) SYS_ARG1, (size_t) SYS_ARG2, (int) SYS_ARG3, fd->file, (off_t) SYS_ARG5);
+			if (addr == NULL) {
+				syscall_exit(-1);
+			}
+
+			f->R.rax = addr;
+
+			break;
+
+		case SYS_MUNMAP:
+			break;
+
 		default:
 			syscall_exit (-1);
 	}
