@@ -417,7 +417,13 @@ vm_claim_page (void *va UNUSED) {
 /* PAGE를 claim하고 mmu를 설정한다. */
 static bool
 vm_do_claim_page (struct page *page) {
+	bool succ;
+	if(page == NULL) {
+		return false;
+	}
+
 	struct frame *frame = vm_get_frame ();
+
 	if(frame == NULL) {
 		return false;
 	}
@@ -427,9 +433,22 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
-	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+
+	succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+	if(!succ){
+		frame->page = NULL;
+		page->frame = NULL;
+		return false;
+	}
 	
-	return swap_in (page, frame->kva);
+	if(!swap_in (page, frame->kva)) {
+		pml4_clear_page(thread_current()->pml4, page->va);
+		frame->page = NULL;
+		page->frame = NULL;
+		return false;
+	}
+
+	return true;
 }
 
 /* 새로운 supplemental page table을 초기화한다. */
