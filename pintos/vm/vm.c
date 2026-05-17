@@ -254,12 +254,36 @@ vm_get_victim (void) {
 
 /* 페이지 하나를 축출하고 해당 프레임을 반환한다.
  * 오류 시 NULL을 반환한다. */
+ /**
+  * @brief victim 정책으로 선정된 frame swap out 후 page 매핑 끊고 비워진 frame 반환
+  * 
+  * @return struct frame* 
+  * @author ummfieg
+  * @date 2026-05-17
+  */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환한다. */
+	if(victim == NULL) {
+		return NULL;
+	} 
 
-	return NULL;
+	struct page *old_page = victim->page;
+	if(old_page == NULL || old_page->owner == NULL || old_page->owner->pml4 == NULL) {
+		return NULL;
+	}
+
+	if(!swap_out(old_page)) {
+		return NULL;
+	}
+
+	/* old_page의 매핑을 끊고 frame 연결 해제 */
+	pml4_clear_page(old_page->owner->pml4, old_page->va);
+	old_page->frame = NULL;
+	victim->page = NULL;
+		
+	return victim;
 }
 
 /* palloc()을 호출하고 프레임을 가져온다.
