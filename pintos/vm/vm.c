@@ -213,21 +213,42 @@ vm_get_victim (void) {
 	 /* TODO: 축출 정책은 직접 정한다. */
 	struct list_elem *e;
 
-	for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e)) {
-		struct frame *frame = list_entry(e, struct frame, elem);
-		if(frame->pinned || frame->page == NULL){
-			continue;
-		} else {
-			bool checked = pml4_is_accessed(frame->page->owner->pml4, frame->page->va);
-			if(checked) {
-				pml4_set_accessed(frame->page->owner->pml4, frame->page->va, false);
+	lock_acquire (&frame_lock);
+
+	while (victim == NULL) {
+		bool has_candidate = false;
+
+		for (e = list_begin (&frame_table);
+			 e != list_end (&frame_table);
+			 e = list_next (e)) {
+			struct frame *frame = list_entry (e, struct frame, elem);
+
+			if (frame->pinned || frame->page == NULL ||
+					frame->page->owner == NULL ||
+					frame->page->owner->pml4 == NULL) {
 				continue;
-			} else {
-				victim = frame;
-				break;
 			}
+
+			/* pinned가 아니거나, page, owner, pml4가 있는 frame은 후보*/
+			has_candidate = true;
+
+			if (pml4_is_accessed (frame->page->owner->pml4,
+						frame->page->va)) {
+				pml4_set_accessed (frame->page->owner->pml4,
+						frame->page->va, false);
+				continue;
+			}
+
+			victim = frame;
+			break;
+		}
+
+		if (!has_candidate) {
+			break;
 		}
 	}
+
+	lock_release (&frame_lock);
 	return victim;
 }
 
