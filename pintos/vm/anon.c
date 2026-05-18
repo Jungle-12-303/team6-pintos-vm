@@ -73,7 +73,23 @@ anon_swap_out (struct page *page) {
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
+/**
+ * @brief 익명 페이지가 차지하고 있던 리소스를 해제합니다.
+ * 페이지 구조체를 명시적으로 해제할 필요는 없습니다. 이는 호출자가 수행해야 합니다.
+ * 
+ * @param page
+ * @author hojun-lee99
+ * @date 2026-05-18
+ */
 static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	size_t slot = anon_page->swap_slot;
+
+	if(slot != SWAP_SLOT_NONE) {
+		lock_acquire(&swap_lock);
+		bitmap_reset(swap_table, slot);
+		anon_page->swap_slot = SWAP_SLOT_NONE;
+		lock_release(&swap_lock);
+	}
 }
