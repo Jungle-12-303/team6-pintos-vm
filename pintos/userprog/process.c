@@ -20,6 +20,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "vm/lazy_load.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif

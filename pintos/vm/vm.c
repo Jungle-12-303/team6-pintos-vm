@@ -6,6 +6,7 @@
 #include "lib/kernel/hash.h"
 #include <string.h>
 #include "include/userprog/process.h"
+#include "vm/lazy_load.h"
 
 
 /* SONNY'S CODE */

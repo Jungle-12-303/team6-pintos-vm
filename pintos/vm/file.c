@@ -1,6 +1,7 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include "vm/vm.h"
+#include "vm/lazy_load.h"
 
 
 /**
