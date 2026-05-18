@@ -163,7 +163,11 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		}
 		
 
-		aux->file = file;
+		aux->file = file_reopen(file);
+		if (aux->file == NULL) {
+			free(aux);
+			return NULL;
+		}
 		aux->ofs = offset;
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
@@ -200,6 +204,7 @@ lazy_load_file (struct page *page, void *aux) {
 	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
 
 	if(read != (off_t) load_info->page_read_bytes) {
+		file_close(load_info->file);
 		free(load_info);
 		return false;
 	}
