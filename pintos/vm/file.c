@@ -12,6 +12,7 @@
  */
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "threads/mmu.h"
 #define is_pg_aligned(va) (pg_ofs(va) == 0)
 
 bool lazy_load_file (struct page *page, void *aux);
@@ -71,17 +72,51 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 }
 
 /* 파일에서 내용을 읽어 페이지를 스왑 인합니다. */
+/**
+ * @brief file_page의 file에서 데이터를 읽어서 frame에 올리기
+ * 
+ * @param page 
+ * @param kva 
+ * @return true 
+ * @return false 
+ * @author iamnuked
+ * @date 2026-05-18
+ */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	struct file_page *file_page UNUSED = &page->file;	
+	ASSERT(page != NULL);
+	ASSERT(kva != NULL);
+	ASSERT(page->operations->type == VM_FILE)
 
-
+	struct file_page *file_page UNUSED = &page->file;
+	
+	file_read_at(file_page->file, kva, file_page->page_read_bytes, file_page->ofs);
+	
+	return true;
 }
 
 /* 내용을 파일에 다시 써서 페이지를 스왑 아웃합니다. */
+/**
+ * @brief 내용이 변경된 페이지인 경우 파일 저장 후 스왑 아웃
+ * 
+ * @param page 
+ * @return true 
+ * @return false 
+ * @author iamnuked
+ * @date 2026-05-18
+ */
 static bool
 file_backed_swap_out (struct page *page) {
+	ASSERT(page != NULL);
+	ASSERT(page->operations->type == VM_FILE);
+
 	struct file_page *file_page UNUSED = &page->file;
+
+	if (pml4_is_dirty(page->owner->pml4, page->va)) {
+		file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
+	}
+
+	return true;
 }
 
 /* 파일 기반 페이지를 제거합니다. PAGE는 호출자가 해제합니다. */
@@ -187,6 +222,13 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 }
 
 /* munmap을 수행합니다 */
+/**
+ * @brief munmap 함수
+ * 
+ * @param addr 
+ * @author iamnuked
+ * @date 2026-05-18
+ */
 void
 do_munmap (void *addr) {
 }
