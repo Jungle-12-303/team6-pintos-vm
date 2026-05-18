@@ -8,9 +8,22 @@
  * @date 2026-05-16
  * 헤더 파일 추가
  * page aligned 체크 메크로 함수 추가
+ * load_lazy_file 함수 선언 추가
  */
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #define is_pg_aligned(va) (pg_ofs(va) == 0)
+
+bool lazy_load_file (struct page *page, void *aux);
+
+
+struct lazy_load_info {
+	struct file *file; 		 /* 읽어올 실행파일 */
+	off_t ofs; 				 /* page 데이터가 시작되는 파일 offset */
+	size_t page_read_bytes;  /* pgae에 파일에서 읽어 넣을 byte 수  */
+	size_t page_zero_bytes;  /* page에서 0으로 채울 byte 수 */
+};
+
 /* SONNY'S CODE */
 
 
@@ -44,16 +57,16 @@ vm_file_init (void) {
  * @date 2026-05-16
  */
 bool
-file_backed_initializer (struct page *page, enum vm_type type, void *kva) { // vm_type 매개변수는 왜 필요하지?
+file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
+	ASSERT(VM_TYPE(type) == VM_FILE);
+
 	/* 핸들러를 설정합니다 */
 	page->operations = &file_ops;
 
 	struct file_page *file_page = &page->file;
 
 	/* SONNY'S CODE */
-
-
-
+	return true;
 	/* SONNY'S CODE */
 }
 
@@ -95,21 +108,14 @@ file_backed_destroy (struct page *page) {
  */
 void *
 do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offset) {
-	/* 인자 검증 */
+	
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 
-	/* addr 정상 주소 확인 */
-	if (addr == NULL ||  !is_pg_aligned(addr) || !is_user_vaddr(addr)) {
-		return NULL;
-	}
-
+	
+	/* 인자 검증 */
+	
 	/* length 가 0인지 확인*/
 	if (length == 0) {
-		return NULL;
-	}
-
-	/* 이미 사용중인 페이지인지 체크 */
-	if (spt_find_page(spt, addr) != NULL) {
 		return NULL;
 	}
 
@@ -117,15 +123,97 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	if (file == NULL) {
 		return NULL;
 	}
-	
-	if (vm_alloc_page_with_initializer (VM_FILE, addr, writable, file_backed_initializer, NULL)) {
-		return addr;
+
+	off_t file_size = file_length(file);
+
+	/* 파일 크기가 offset보다 큰지 확인 */
+	if (file_size <= offset) {
+		return NULL;
 	}
 
-	return NULL;
+	/* addr 정상수 주소 확인 */
+	if (addr == NULL || !is_pg_aligned(addr) || !is_user_vaddr(addr) || !is_user_vaddr((uint8_t*)addr + length - 1)) {
+		return NULL;
+	}
+
+	/* 읽는 파일 위치가 Page 시작 위치에 맞도록 맞춰야 함 */
+	if (offset % PGSIZE != 0) {
+		return NULL;
+	}
+
+	uint8_t *start = addr;
+	uint8_t *end = start + length;
+
+	/* 이미 사용중인 페이지인지 체크 */
+	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
+		if (spt_find_page(spt, curr_addr) != NULL) {
+			return NULL;
+		}
+	}
+
+	uint32_t read_bytes = file_size - offset;
+
+	/* 읽은 파일이 할당할 길이보다 길 경우 초과된 부분 잘라내기 */
+	if (read_bytes > length) {
+		read_bytes = length;
+	}
+
+	/* SPT에 페이지 정보 등록 */
+	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
+
+		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		struct lazy_load_info *aux = malloc(sizeof *aux);
+		if(aux == NULL) {
+			return NULL;
+		}
+		
+
+		aux->file = file;
+		aux->ofs = offset;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
+
+		if(!vm_alloc_page_with_initializer (VM_FILE, curr_addr, writable, lazy_load_file, aux)) {
+			free(aux);
+			return NULL;
+		}
+		read_bytes -= page_read_bytes;
+		offset += page_read_bytes;
+	}
+
+	return addr;
 }
 
 /* munmap을 수행합니다 */
 void
 do_munmap (void *addr) {
+}
+
+
+/**
+ * @brief do_mmap 에서 vm_alloc_page_with_initializer 4번째 인자 함수 아직 미구현
+ * 
+ * @author iamnuked
+ * @date 2026-05-17
+ */
+bool
+lazy_load_file (struct page *page, void *aux) {
+	// TODO 함수를 구현해야됨
+	struct lazy_load_info *load_info = aux;
+	uint8_t *kva = page->frame->kva;
+
+	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
+
+	if(read != (off_t) load_info->page_read_bytes) {
+		free(load_info);
+		return false;
+	}
+
+	/* 읽지 않은 남은 부분 0으로 채우기 */
+	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	free(load_info);
+	
+	return true;
 }
