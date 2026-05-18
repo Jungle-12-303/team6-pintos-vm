@@ -21,6 +21,16 @@
 #include "./threads/synch.h"
 #include "lib/kernel/list.h"
 
+/**
+ * @brief frame table에서 frame제거를 위한 vm_free_frame 함수 선언
+ * 
+ * @param frame 
+ * @author ummfieg
+ * @date 2026-05-17
+ */
+static void vm_free_frame (struct frame *frame);
+
+
 #define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -195,7 +205,17 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	ASSERT (spt != NULL)
 	ASSERT (page != NULL)
 	ASSERT (hash_delete(&spt->hash_table, &page->hash_elem) != NULL)
-	
+
+	/**
+	 * @brief page 해제 전 연결된 frame을 frame_table에서 제거
+	 * 
+	 * @author ummfieg
+	 * @date 2026-05-18
+	 */
+	if (page->frame != NULL && page->owner != NULL && page->owner->pml4 != NULL) {
+		pml4_clear_page (page->owner->pml4, page->va);
+	}
+	vm_free_frame(page->frame);
 	vm_dealloc_page (page);
 }
 
@@ -254,12 +274,36 @@ vm_get_victim (void) {
 
 /* 페이지 하나를 축출하고 해당 프레임을 반환한다.
  * 오류 시 NULL을 반환한다. */
+ /**
+  * @brief victim 정책으로 선정된 frame swap out 후 page 매핑 끊고 비워진 frame 반환
+  * 
+  * @return struct frame* 
+  * @author ummfieg
+  * @date 2026-05-17
+  */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환한다. */
+	if(victim == NULL) {
+		return NULL;
+	} 
 
-	return NULL;
+	struct page *old_page = victim->page;
+	if(old_page == NULL || old_page->owner == NULL || old_page->owner->pml4 == NULL) {
+		return NULL;
+	}
+
+	if(!swap_out(old_page)) {
+		return NULL;
+	}
+
+	/* old_page의 매핑을 끊고 frame 연결 해제 */
+	pml4_clear_page(old_page->owner->pml4, old_page->va);
+	old_page->frame = NULL;
+	victim->page = NULL;
+		
+	return victim;
 }
 
 /* palloc()을 호출하고 프레임을 가져온다.
@@ -267,7 +311,6 @@ vm_evict_frame (void) {
  * 이 함수는 항상 유효한 주소를 반환한다.
  * 즉, 사용자 풀 메모리가 가득 차면 이 함수는 사용 가능한 메모리 공간을 얻기 위해 프레임을 축출한다. */
 
- /* TODO frame이 꽉찼을 때 eviction/swap 추가 구현 필요 */
 static struct frame *
 vm_get_frame (void) {
 	/* TODO: 이 함수를 채운다. */
@@ -277,9 +320,17 @@ vm_get_frame (void) {
 	}
 
 	frame->kva = palloc_get_page(PAL_USER);
+
+	/* 새 frame을 만들 수 없으면 기존 frame을 eviction으로 확보한다. */
+	/**
+	 * @brief palloc 실패시 eviction 함수 실행으로 frame 선정
+	 * 
+	 * @author 임가인
+	 * @date 2026-05-17
+	 */
 	if (frame->kva == NULL) {
 		free(frame);
-		return NULL;
+		return vm_evict_frame();
 	}
 
 	/**
@@ -293,7 +344,7 @@ vm_get_frame (void) {
 
 	/**
 	 * @brief 정상적으로 생성된 frame만(kva) 전역 frame_table에 넣고
-	 *  추가 되는 동안 lock을 걸어 접근이 동시에 이루어지지 않도록 보호
+	 *  추가 되는 동안 lock을 걸어 frame_table 리스트 삽입 중 동시 수정 방지
 	 * 
 	 * @author 임가인
 	 * @date 2026-05-16
@@ -377,8 +428,11 @@ vm_claim_page (void *va UNUSED) {
 	/* SONNY'S CODE */
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 	page = spt_find_page(spt, va);
-
 	/* SONNY'S CODE */
+
+	if(page == NULL)  {
+		return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -386,7 +440,13 @@ vm_claim_page (void *va UNUSED) {
 /* PAGE를 claim하고 mmu를 설정한다. */
 static bool
 vm_do_claim_page (struct page *page) {
+	bool succ;
+	if(page == NULL) {
+		return false;
+	}
+
 	struct frame *frame = vm_get_frame ();
+
 	if(frame == NULL) {
 		return false;
 	}
@@ -396,9 +456,22 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
-	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+	succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+	if(!succ){
+
+		/* page table 매핑 실패로 claim하지 못한 frame을 해제 */
+		vm_free_frame (frame);
+		return false;
+	}
 	
-	return swap_in (page, frame->kva);
+	if(!swap_in (page, frame->kva)) {
+		/* swap_in 실패 시 생성했던 page table 매핑을 삭제하고 frame을 해제 */
+		pml4_clear_page(thread_current()->pml4, page->va);
+		vm_free_frame (frame);
+		return false;
+	}
+
+	return true;
 }
 
 /* 새로운 supplemental page table을 초기화한다. */
@@ -540,8 +613,21 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 	return p_a->va < p_b->va;
 }
 
+
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
+
+	/**
+	 * @brief SPT 전체 정리 중 page에 연결된 frame도 함께 제거
+	 * 
+	 * @author ummfieg
+	 * @date 2026-05-18
+	 */
+	
+	if (page->frame != NULL && page->owner != NULL && page->owner->pml4 != NULL) {
+		pml4_clear_page (page->owner->pml4, page->va);
+	}
+	vm_free_frame(page->frame);
 	vm_dealloc_page(page);
 }
 
@@ -583,4 +669,36 @@ vm_claim_or_grow_page(void *addr, void *rsp) {
     }
 
     return false;
+}
+
+/**
+ * @brief page-frame연결 및 frame table에 등록 된 frame을 제거하고 frame을 해제하는 helper함수
+ * 
+ * @param frame 
+ * @author ummfieg
+ * @date 2026-05-17
+ */
+static void
+vm_free_frame (struct frame *frame) {
+	if (frame == NULL) {
+		return;
+	}
+		
+	/* page-frame연결 해제 */
+	if (frame->page != NULL) {
+		frame->page->frame = NULL;
+		frame->page = NULL;
+	}
+
+	/* remove하는 과정 동안 lock 실행 */
+	lock_acquire (&frame_lock);
+	list_remove (&frame->elem);
+	lock_release (&frame_lock);
+
+	/* frame 물리주소 및 구조체 free */
+	if (frame->kva != NULL) {
+		palloc_free_page (frame->kva);
+	}
+
+	free (frame);
 }
