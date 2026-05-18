@@ -425,9 +425,12 @@ vm_claim_page (void *va UNUSED) {
 	/* SONNY'S CODE */
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 	page = spt_find_page(spt, va);
-
 	/* SONNY'S CODE */
 
+	if(page == NULL)  {
+		return false;
+	}
+	
 	return vm_do_claim_page (page);
 }
 
