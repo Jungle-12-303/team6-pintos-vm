@@ -67,9 +67,50 @@ anon_swap_in (struct page *page, void *kva) {
 }
 
 /* Swap out the page by writing contents to the swap disk. */
+/**
+ * @brief 특정 anon 페이지를 disk swap 영역에 쓰는 함수
+ * 
+ * @param page 
+ * @return true 
+ * @return false 
+ * @author hojun-lee99
+ * @date 2026-05-17
+ */
 static bool
 anon_swap_out (struct page *page) {
+	/*
+	 * 1. 빈 swap slot을 bitmap_scan_and_flip(swap_table, 0, 1, false)(락 획득 필요)로 확보
+	 * 2. 빈 slot이 없으면 실패 처리, return false or PANIC
+	 * 3. page->fram->kav 의 4096 바이트를 512바이트씩 8개 sector에 disk_write()
+	 * 4. page->anon.swap_slot = slot 으로 기록
+	*/
+	ASSERT(page != NULL);
+	ASSERT(page->frame != NULL);
+	ASSERT(page->frame->kva != NULL);
+	ASSERT(page->operations->type == VM_ANON);
+
 	struct anon_page *anon_page = &page->anon;
+	ASSERT (anon_page->swap_slot == SWAP_SLOT_NONE);
+	
+	size_t slot;
+
+	lock_acquire(&swap_lock);
+	slot = bitmap_scan_and_flip(swap_table, 0, 1, false);
+	lock_release(&swap_lock);
+
+	if(slot == BITMAP_ERROR) {
+		return false;
+	}
+
+	size_t sectors_per_page = PGSIZE / DISK_SECTOR_SIZE;
+	uint8_t *kva = page->frame->kva;
+	
+	for(size_t i = 0; i < sectors_per_page; i++){
+		disk_write(swap_disk, slot * sectors_per_page + i, kva + (i * DISK_SECTOR_SIZE));
+	}
+
+	page->anon.swap_slot = slot;
+	return true;
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
