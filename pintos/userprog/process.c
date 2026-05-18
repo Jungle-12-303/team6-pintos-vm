@@ -20,6 +20,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "vm/lazy_load.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -57,13 +58,6 @@ struct fork_info {
 	struct thread *parent;
 	struct intr_frame parent_if;
 	struct child_status *child;
-};
-
-struct lazy_load_info {
-	struct file *file; 		 /* 읽어올 실행파일 */
-	off_t ofs; 				 /* page 데이터가 시작되는 파일 offset */
-	size_t page_read_bytes;  /* pgae에 파일에서 읽어 넣을 byte 수  */
-	size_t page_zero_bytes;  /* page에서 0으로 채울 byte 수 */
 };
 
 /* initd와 다른 프로세스에서 공통으로 사용하는 프로세스 초기화 함수. */
@@ -916,12 +910,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
 
 	if(read != (off_t) load_info->page_read_bytes) {
+		file_close(load_info->file);
 		free(load_info);
 		return false;
 	}
 
 	/* 읽지 않은 남은 부분 0으로 채우기 */
 	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	file_close(load_info->file);
 	free(load_info);
 	
 	return true;
@@ -962,12 +958,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		}
 
 		/* 현재 page를 나중에 채우기 위한 정보 저장 */
-		aux->file = file;
+		aux->file = file_reopen(file);
+		if (aux->file == NULL) {
+			free(aux);
+			return false;
+		}
 		aux->ofs = ofs;
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, aux)) {
+			file_close(aux->file);
 			free(aux);
 			return false;
 		}

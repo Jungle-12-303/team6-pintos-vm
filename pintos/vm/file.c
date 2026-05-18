@@ -1,6 +1,7 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include "vm/vm.h"
+#include "vm/lazy_load.h"
 
 
 /**
@@ -16,14 +17,6 @@
 #define is_pg_aligned(va) (pg_ofs(va) == 0)
 
 bool lazy_load_file (struct page *page, void *aux);
-
-
-struct lazy_load_info {
-	struct file *file; 		 /* 읽어올 실행파일 */
-	off_t ofs; 				 /* page 데이터가 시작되는 파일 offset */
-	size_t page_read_bytes;  /* pgae에 파일에서 읽어 넣을 byte 수  */
-	size_t page_zero_bytes;  /* page에서 0으로 채울 byte 수 */
-};
 
 /* SONNY'S CODE */
 
@@ -210,7 +203,11 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		}
 		
 
-		aux->file = file;
+		aux->file = file_reopen(file);
+		if (aux->file == NULL) {
+			free(aux);
+			return NULL;
+		}
 		aux->ofs = offset;
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
@@ -247,13 +244,13 @@ do_munmap (void *addr) {
  */
 bool
 lazy_load_file (struct page *page, void *aux) {
-	// TODO 함수를 구현해야됨
 	struct lazy_load_info *load_info = aux;
 	uint8_t *kva = page->frame->kva;
 
 	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
 
 	if(read != (off_t) load_info->page_read_bytes) {
+		file_close(load_info->file);
 		free(load_info);
 		return false;
 	}
