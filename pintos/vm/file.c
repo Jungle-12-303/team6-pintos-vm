@@ -92,7 +92,7 @@ file_backed_swap_in (struct page *page, void *kva) {
 	
 
 	off_t read = file_read_at(file_page->file, kva, file_page->page_read_bytes, file_page->ofs);
-	if (read != file_page->page_read_bytes) {
+	if (read != (off_t)file_page->page_read_bytes) {
 		return false;
 	}
 	memset(kva + file_page->page_read_bytes, 0, file_page->page_zero_bytes);
