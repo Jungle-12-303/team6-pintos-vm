@@ -197,7 +197,6 @@ do_munmap (void *addr) {
  */
 bool
 lazy_load_file (struct page *page, void *aux) {
-	// TODO 함수를 구현해야됨
 	struct lazy_load_info *load_info = aux;
 	uint8_t *kva = page->frame->kva;
 
