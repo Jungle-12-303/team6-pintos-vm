@@ -517,7 +517,14 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 					free(new_aux);
 					return false;
 				}
+				
 				*new_aux = *old_aux;
+				new_aux->file = file_reopen(old_aux->file);
+				if (new_aux->file == NULL) {
+					free(new_aux);
+					free(dst_page);
+					return false;
+				}
 			}
 
 			uninit_new (dst_page,
