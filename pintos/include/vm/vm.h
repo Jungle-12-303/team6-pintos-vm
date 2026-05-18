@@ -55,7 +55,7 @@ struct page {
 	/**
 	 * @brief page를 가지고 있는 owner thread를 역참조하여 thread의 멤버에 접근
 	 * 
-	 * @author 임가인
+	 * @author ummfieg
 	 * @date 2026-05-16
 	 */
 	struct thread *owner;
@@ -77,7 +77,7 @@ struct page {
 /**
  * @brief * elem - frame을 frame table에 넣기 위한 연결 노드
  * 
- * @author 임가인
+ * @author ummfieg
  * @date 2026-05-16
  */
 struct frame {

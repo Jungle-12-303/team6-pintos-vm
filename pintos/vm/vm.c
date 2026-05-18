@@ -17,7 +17,7 @@
 
 /**
  * @brief lock init을 위한 synch.h, list init을 위한 list.h include
- * @author 임가인
+ * @author ummfieg
  * @date 2026-05-16
  */
 #include "./threads/synch.h"
@@ -45,7 +45,7 @@ bool vm_claim_or_grow_page(void *addr, void *rsp);
 /**
  * @brief frame들을 관리하는 전역 frame_table
  * 
- * @author 임가인
+ * @author ummfieg
  * @date 2026-05-16
  */
 static struct list frame_table;
@@ -53,7 +53,7 @@ static struct list frame_table;
 /**
  * @brief frame_table을 동시에 건드리는 상황을 막기 위한 lock
  * 
- * @author 임가인
+ * @author ummfieg
  * @date 2026-05-16
  */
 static struct lock frame_lock;
@@ -150,7 +150,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		/**
 		 * @brief 현재 thread를 page owner로 초기화 
 		 * 
-		 * @author 임가인
+		 * @author ummfieg
 		 * @date 2026-05-17
 		 */
 		new_page->owner = thread_current();
@@ -225,7 +225,7 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 /**
  * @brief 내보낼 대상 frame을 탐색하는 함수 (정책은 second-chance 사용)
  * 
- * @author 임가인
+ * @author ummfieg
  * @date 2026-05-16
  */
 static struct frame *
@@ -269,7 +269,7 @@ vm_get_victim (void) {
 			break;
 		}
 	}
-
+	victim->pinned = true;
 	lock_release (&frame_lock);
 	return victim;
 }
@@ -293,10 +293,12 @@ vm_evict_frame (void) {
 
 	struct page *old_page = victim->page;
 	if(old_page == NULL || old_page->owner == NULL || old_page->owner->pml4 == NULL) {
+		victim->pinned = false;
 		return NULL;
 	}
 
 	if(!swap_out(old_page)) {
+		victim->pinned = false;
 		return NULL;
 	}
 
@@ -304,6 +306,7 @@ vm_evict_frame (void) {
 	pml4_clear_page(old_page->owner->pml4, old_page->va);
 	old_page->frame = NULL;
 	victim->page = NULL;
+	victim->pinned = false;
 		
 	return victim;
 }
@@ -327,7 +330,7 @@ vm_get_frame (void) {
 	/**
 	 * @brief palloc 실패시 eviction 함수 실행으로 frame 선정
 	 * 
-	 * @author 임가인
+	 * @author ummfieg
 	 * @date 2026-05-17
 	 */
 	if (frame->kva == NULL) {
@@ -338,7 +341,7 @@ vm_get_frame (void) {
 	/**
 	 * @brief 생성된 frame field 세팅
 	 * 
-	 * @author 임가인
+	 * @author ummfieg
 	 * @date 2026-05-16
 	 */
 	frame->page = NULL;
@@ -348,7 +351,7 @@ vm_get_frame (void) {
 	 * @brief 정상적으로 생성된 frame만(kva) 전역 frame_table에 넣고
 	 *  추가 되는 동안 lock을 걸어 frame_table 리스트 삽입 중 동시 수정 방지
 	 * 
-	 * @author 임가인
+	 * @author ummfieg
 	 * @date 2026-05-16
 	 */
 	lock_acquire(&frame_lock);
@@ -537,7 +540,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 			/**
 			 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
 			 * 
-			 * @author 임가인
+			 * @author ummfieg
 			 * @date 2026-05-17
 			 */
 			dst_page->owner = thread_current();
@@ -580,7 +583,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		/**
 		 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
 		 * 
-		 * @author 임가인
+		 * @author ummfieg
 		 * @date 2026-05-17
 		 */
 		dst_page->owner = thread_current();
