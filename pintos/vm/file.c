@@ -114,11 +114,22 @@ static bool
 file_backed_swap_out (struct page *page) {
 	ASSERT(page != NULL);
 	ASSERT(page->operations->type == VM_FILE);
+	off_t bytes;
+	struct file_page *file_page = &page->file;
 
-	struct file_page *file_page UNUSED = &page->file;
-
+	/* dirty bit 확인 전 NULL 체크 */
+	if(page->owner == NULL || page->owner->pml4 == NULL || page->frame == NULL || 
+		page->frame->kva == NULL || file_page->file == NULL) {
+		return false;
+	}
 	if (pml4_is_dirty(page->owner->pml4, page->va)) {
-		file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
+		bytes = file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
+	
+		/* 써야할 bytes만큼 못 썼으면 false 반환 */
+		if (bytes != (off_t) file_page->page_read_bytes) {
+			return false;
+		}
+		pml4_set_dirty(page->owner->pml4, page->va, false);	
 	}
 
 	return true;
