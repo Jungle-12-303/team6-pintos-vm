@@ -11,6 +11,7 @@
 #include "threads/vaddr.h"
 #include <string.h>
 #include "threads/malloc.h"
+#include "vm/lazy_load.h"
 
 static bool uninit_initialize (struct page *page, void *kva);
 static void uninit_destroy (struct page *page);
@@ -91,11 +92,13 @@ uninit_initialize (struct page *page, void *kva) {
  * @date 2026-05-18
  */
 static void uninit_destroy (struct page *page) {
-	struct uninit_page *uninit UNUSED = &page->uninit;
-	
+	struct uninit_page *uninit = &page->uninit;
+	struct lazy_load_info *info = uninit->aux;
+
 	// aux가 있을경우 해제
-	if (uninit->aux != NULL) {
-		free(uninit->aux);
+	if (info != NULL) {
+		file_close(info->file);
+		free(info);
 		uninit->aux = NULL;
 	}
 }
