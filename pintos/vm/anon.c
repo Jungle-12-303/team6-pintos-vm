@@ -5,6 +5,7 @@
 #include <bitmap.h>
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include <string.h>
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
@@ -61,9 +62,50 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 }
 
 /* Swap in the page by read contents from the swap disk. */
+/**
+ * @brief swap disk에 있는 페이지 데이터를 물리 메모리에 올리는 작업을 진행합니다.
+ * 
+ * @param page 
+ * @param kva 
+ * @return true 
+ * @return false 
+ * @author hojun-lee99
+ * @date 2026-05-17
+ */
 static bool
 anon_swap_in (struct page *page, void *kva) {
-	struct anon_page *anon_page = &page->anon;
+	/*
+	 * 1. paeg->anon.swap_slot == SWAP_SLOT_NONE이면 swap disk에 데이터가 없는 새 anonymous page
+	 *    memset(kva, 0, PGSIZE) 후 true
+	 * 2. slot이 있으면 해당 slot의 8개 sector를 disk_read()로 kva에 복원
+	 * 3. 복원 후 bitmap에서 slot을 free 처리
+	 * 4. page->annon.swap_slot = SWAP_SLOT_NONE
+	 * 5. return true
+	 */
+	ASSERT(page != NULL);
+	ASSERT(kva != NULL);
+	ASSERT(page->operations->type == VM_ANON);
+
+	if (page->anon.swap_slot == SWAP_SLOT_NONE) {
+		memset(kva, 0, PGSIZE);
+		return true;
+	}
+
+	size_t slot = page->anon.swap_slot;
+	size_t sectors_per_page = PGSIZE / DISK_SECTOR_SIZE;
+	uint8_t *dst = kva;
+
+	for (size_t i = 0; i < sectors_per_page; i++) {
+		disk_read(swap_disk, slot * sectors_per_page + i, dst + (i * DISK_SECTOR_SIZE));
+	}
+
+	lock_acquire(&swap_lock);
+	bitmap_reset(swap_table, slot);
+	lock_release(&swap_lock);
+
+	page->anon.swap_slot = SWAP_SLOT_NONE;
+	
+	return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
