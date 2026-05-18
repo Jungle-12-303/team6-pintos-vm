@@ -5,6 +5,7 @@
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
 #include <string.h>
+#include "include/userprog/process.h"
 
 
 /* SONNY'S CODE */
@@ -504,11 +505,24 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 
 		// 복사하려는 페이지 타입이 VM_UNINIT lazy 페이지이면 새로운 페이지 생성
 		if (src_page->operations->type == VM_UNINIT) {
+			struct lazy_load_info *new_aux = NULL;
+			
+			if(src_page->uninit.aux != NULL) {
+				struct lazy_load_info *old_aux = src_page->uninit.aux;
+				
+				new_aux = malloc(sizeof *new_aux);
+				if (new_aux == NULL) {
+					free(dst_page);
+					return false;
+				}
+				*new_aux = *old_aux;
+			}
+
 			uninit_new (dst_page,
 				src_page->va,
 				src_page->uninit.init,
 				src_page->uninit.type,
-				src_page->uninit.aux,
+				new_aux,
 				src_page->uninit.page_initializer);
 			dst_page->writable = src_page->writable;
 			/**
