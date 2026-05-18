@@ -910,12 +910,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	off_t read = file_read_at(load_info->file, kva, load_info->page_read_bytes, load_info->ofs);
 
 	if(read != (off_t) load_info->page_read_bytes) {
+		file_close(load_info->file);
 		free(load_info);
 		return false;
 	}
 
 	/* 읽지 않은 남은 부분 0으로 채우기 */
 	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	file_close(load_info->file);
 	free(load_info);
 	
 	return true;
