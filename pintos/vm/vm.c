@@ -21,6 +21,16 @@
 #include "./threads/synch.h"
 #include "lib/kernel/list.h"
 
+/**
+ * @brief frame table에서 frame제거를 위한 vm_free_frame 함수 선언
+ * 
+ * @param frame 
+ * @author ummfieg
+ * @date 2026-05-17
+ */
+static void vm_free_frame (struct frame *frame);
+
+
 #define STACK_MAX (1 << 20) // stack 최대값 1MB
 
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
@@ -195,7 +205,14 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	ASSERT (spt != NULL)
 	ASSERT (page != NULL)
 	ASSERT (hash_delete(&spt->hash_table, &page->hash_elem) != NULL)
-	
+
+	/**
+	 * @brief page 해제 전 연결된 frame을 frame_table에서 제거
+	 * 
+	 * @author ummfieg
+	 * @date 2026-05-18
+	 */
+	vm_free_frame(page->frame);
 	vm_dealloc_page (page);
 }
 
@@ -433,18 +450,18 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하도록 페이지 테이블 엔트리를 삽입한다. */
-
 	succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 	if(!succ){
-		frame->page = NULL;
-		page->frame = NULL;
+
+		/* page table 매핑 실패로 claim하지 못한 frame을 해제 */
+		vm_free_frame (frame);
 		return false;
 	}
 	
 	if(!swap_in (page, frame->kva)) {
+		/* swap_in 실패 시 생성했던 page table 매핑을 삭제하고 frame을 해제 */
 		pml4_clear_page(thread_current()->pml4, page->va);
-		frame->page = NULL;
-		page->frame = NULL;
+		vm_free_frame (frame);
 		return false;
 	}
 
@@ -590,8 +607,17 @@ static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b
 	return p_a->va < p_b->va;
 }
 
+
 static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
+
+	/**
+	 * @brief SPT 전체 정리 중 page에 연결된 frame도 함께 제거
+	 * 
+	 * @author ummfieg
+	 * @date 2026-05-18
+	 */
+	vm_free_frame(page->frame);
 	vm_dealloc_page(page);
 }
 
@@ -633,4 +659,36 @@ vm_claim_or_grow_page(void *addr, void *rsp) {
     }
 
     return false;
+}
+
+/**
+ * @brief page-frame연결 및 frame table에 등록 된 frame을 제거하고 frame을 해제하는 helper함수
+ * 
+ * @param frame 
+ * @author ummfieg
+ * @date 2026-05-17
+ */
+static void
+vm_free_frame (struct frame *frame) {
+	if (frame == NULL) {
+		return;
+	}
+		
+	/* page-frame연결 해제 */
+	if (frame->page != NULL) {
+		frame->page->frame = NULL;
+		frame->page = NULL;
+	}
+
+	/* remove하는 과정 동안 lock 실행 */
+	lock_acquire (&frame_lock);
+	list_remove (&frame->elem);
+	lock_release (&frame_lock);
+
+	/* frame 물리주소 및 구조체 free */
+	if (frame->kva != NULL) {
+		palloc_free_page (frame->kva);
+	}
+
+	free (frame);
 }
