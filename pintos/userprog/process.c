@@ -956,7 +956,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		}
 
 		/* 현재 page를 나중에 채우기 위한 정보 저장 */
-		aux->file = file;
+		aux->file = file_reopen(file);
+		if (aux->file == NULL) {
+			free(aux);
+			return false;
+		}
 		aux->ofs = ofs;
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
