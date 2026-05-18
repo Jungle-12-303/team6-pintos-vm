@@ -135,7 +135,13 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		   fault 때 사용할 정보를 저장한다. */
 		uninit_new (new_page, upage, init, type, aux, initializer);
 		new_page->writable = writable;
-
+		/**
+		 * @brief 현재 thread를 page owner로 초기화 
+		 * 
+		 * @author 임가인
+		 * @date 2026-05-17
+		 */
+		new_page->owner = thread_current();
 		/* TODO: Insert the page into the spt. */
 
 		if(!spt_insert_page (spt, new_page)) {
@@ -194,11 +200,55 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* 축출될 struct frame을 가져온다. */
+/**
+ * @brief 내보낼 대상 frame을 탐색하는 함수 (정책은 second-chance 사용)
+ * 
+ * @author 임가인
+ * @date 2026-05-16
+ */
 static struct frame *
 vm_get_victim (void) {
+	/* victim으로 고른 frame의 주소를 담아둘 포인터 변수 */
 	struct frame *victim = NULL;
 	 /* TODO: 축출 정책은 직접 정한다. */
+	struct list_elem *e;
 
+	lock_acquire (&frame_lock);
+
+	while (victim == NULL) {
+		bool has_candidate = false;
+
+		for (e = list_begin (&frame_table);
+			 e != list_end (&frame_table);
+			 e = list_next (e)) {
+			struct frame *frame = list_entry (e, struct frame, elem);
+
+			if (frame->pinned || frame->page == NULL ||
+					frame->page->owner == NULL ||
+					frame->page->owner->pml4 == NULL) {
+				continue;
+			}
+
+			/* pinned가 아니거나, page, owner, pml4가 있는 frame은 후보*/
+			has_candidate = true;
+
+			if (pml4_is_accessed (frame->page->owner->pml4,
+						frame->page->va)) {
+				pml4_set_accessed (frame->page->owner->pml4,
+						frame->page->va, false);
+				continue;
+			}
+
+			victim = frame;
+			break;
+		}
+
+		if (!has_candidate) {
+			break;
+		}
+	}
+
+	lock_release (&frame_lock);
 	return victim;
 }
 
@@ -388,7 +438,14 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 				src_page->uninit.aux,
 				src_page->uninit.page_initializer);
 			dst_page->writable = src_page->writable;
-
+			/**
+			 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
+			 * 
+			 * @author 임가인
+			 * @date 2026-05-17
+			 */
+			dst_page->owner = thread_current();
+			
 			if (!spt_insert_page (dst, dst_page)) {
 				free (dst_page);
 				return false;
@@ -419,6 +476,14 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 
 		uninit_new (dst_page, src_page->va, NULL, type, NULL, initializer);
 		dst_page->writable = src_page->writable;
+
+		/**
+		 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
+		 * 
+		 * @author 임가인
+		 * @date 2026-05-17
+		 */
+		dst_page->owner = thread_current();
 
 		// 목적지 spt에 페이지 추가
 		if (!spt_insert_page (dst, dst_page)) {
