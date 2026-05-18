@@ -517,7 +517,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 					free(new_aux);
 					return false;
 				}
-				
+
 				*new_aux = *old_aux;
 				new_aux->file = file_reopen(old_aux->file);
 				if (new_aux->file == NULL) {
@@ -543,6 +543,10 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 			dst_page->owner = thread_current();
 			
 			if (!spt_insert_page (dst, dst_page)) {
+				if (new_aux != NULL) {
+					file_close(new_aux->file);
+					free(new_aux);
+				}
 				free (dst_page);
 				return false;
 			}
