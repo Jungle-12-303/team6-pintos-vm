@@ -261,6 +261,7 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		aux->page_zero_bytes = page_zero_bytes;
 
 		if(!vm_alloc_page_with_initializer (VM_FILE, curr_addr, writable, lazy_load_file, aux)) {
+			file_close(aux->file);
 			free(aux);
 			return NULL;
 		}
@@ -314,6 +315,13 @@ lazy_load_file (struct page *page, void *aux) {
 
 	/* 읽지 않은 남은 부분 0으로 채우기 */
 	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	struct file_page *file_page = &page->file;
+	
+	file_page->file = load_info->file;
+	file_page->ofs = load_info->ofs;
+	file_page->page_read_bytes = load_info->page_read_bytes;
+	file_page->page_zero_bytes = load_info->page_zero_bytes;
+
 	free(load_info);
 	
 	return true;

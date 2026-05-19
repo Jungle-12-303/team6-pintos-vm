@@ -214,6 +214,11 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	 * @author ummfieg
 	 * @date 2026-05-18
 	 */
+	/* spt 해제시 file swap out */
+	if (page->frame != NULL && page_get_type(page) == VM_FILE) {
+		ASSERT (swap_out (page));
+	}
+
 	if (page->frame != NULL && page->owner != NULL && page->owner->pml4 != NULL) {
 		pml4_clear_page (page->owner->pml4, page->va);
 	}
@@ -651,10 +656,14 @@ static void spt_destroy_func(struct hash_elem *e, void *aux UNUSED) {
 	 * @author ummfieg
 	 * @date 2026-05-18
 	 */
-	
+	if (page->frame != NULL && page_get_type(page) == VM_FILE) {
+		ASSERT (swap_out (page));
+	}
+	/* spt 전체 정리시 file swap out */
 	if (page->frame != NULL && page->owner != NULL && page->owner->pml4 != NULL) {
 		pml4_clear_page (page->owner->pml4, page->va);
 	}
+
 	vm_free_frame(page->frame);
 	vm_dealloc_page(page);
 }
