@@ -24,7 +24,7 @@ void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 static void syscall_exit (int status);
 static void validate_user_addr (const void *);
-static void validate_user_buffer (const void *, unsigned);
+static void validate_user_buffer (const void *, unsigned, bool);
 static void validate_user_string (const char *);
 static char *copy_user_string (const char *);
 static struct fd_entry *find_fd (int);
@@ -95,11 +95,12 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_EXEC:
 		{
 			char *file_name = copy_user_string ((const char *) f->R.rdi);
-
-			if (file_name == NULL)
+			if (file_name == NULL) {
 				syscall_exit (-1);
-			if (process_exec (file_name) < 0)
+			}
+			if (process_exec (file_name) < 0) {
 				syscall_exit (-1);
+			}
 			NOT_REACHED ();
 			break;
 		}
@@ -149,7 +150,7 @@ syscall_handler (struct intr_frame *f) {
 			void *buffer = (void *) f->R.rsi;
 			unsigned size = (unsigned) f->R.rdx;
 
-			validate_user_buffer (buffer, size);
+			validate_user_buffer (buffer, size, true);
 			if (size == 0) {
 				f->R.rax = 0;
 			} else if (fd == 0) {
@@ -177,7 +178,7 @@ syscall_handler (struct intr_frame *f) {
 			const void *buffer = (const void *) f->R.rsi;
 			unsigned size = (unsigned) f->R.rdx;
 
-			validate_user_buffer (buffer, size);
+			validate_user_buffer (buffer, size, false);
 			if (size == 0) {
 				f->R.rax = 0;
 			} else if (fd == 1) {
@@ -227,14 +228,15 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_MMAP:
 			struct fd_entry *fd = find_fd ((int) SYS_ARG4);
 
-			// lock 필요한가?
 			if (fd == NULL) {
-				syscall_exit(-1);
+				f->R.rax = 0;
+				break;
 			}
 
 			void *addr = do_mmap ((void*) SYS_ARG1, (size_t) SYS_ARG2, (int) SYS_ARG3, fd->file, (off_t) SYS_ARG5);
 			if (addr == NULL) {
-				syscall_exit(-1);
+				f->R.rax = 0;
+				break;
 			}
 
 			f->R.rax = addr;
@@ -252,6 +254,7 @@ syscall_handler (struct intr_frame *f) {
 
 static void
 syscall_exit (int status) {
+	
 	thread_current ()->exit_status = status;
 	thread_exit ();
 }
@@ -266,7 +269,7 @@ validate_user_addr (const void *uaddr) {
 /* 유저가 넘긴 buffer 주소 범위(~ buffer + size)가 정상적인 user memory인지 검사 */
 /* 주소 범위가 유저 영역인지, 실제로 매핑이 되어있는지 확인 */
 static void
-validate_user_buffer (const void *buffer, unsigned size) {
+validate_user_buffer (const void *buffer, unsigned size, bool need_writable) {
 	/* 시작, 끝 주소 계산 */
 	uintptr_t start = (uintptr_t) buffer;
 	uintptr_t end = start + size;
@@ -280,7 +283,7 @@ validate_user_buffer (const void *buffer, unsigned size) {
 		
 	struct page *userpage = spt_find_page(&thread_current()->spt, (void*)buffer);
 	/* 현재 페이지가 writable인지 확인하기 */
-	if (userpage != NULL && !userpage->writable) {
+	if (userpage != NULL && !userpage->writable && need_writable) {
 		syscall_exit(-1);
 	}
 

@@ -244,7 +244,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
 		struct page* page = spt_find_page(&thread_current()->spt, (void*)curr_addr);
 
-
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 

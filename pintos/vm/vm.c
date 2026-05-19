@@ -494,7 +494,7 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 /* supplemental page table을 src에서 dst로 복사한다. */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+							  struct supplemental_page_table *src UNUSED) {
 	struct hash_iterator i;
 
 	// iterator를 이용해 해시 테이블을 처음부터 순회
@@ -604,6 +604,16 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 			src_page->frame->pinned = false;
 			spt_remove_page (dst, dst_page);
 			return false;
+		}
+
+		if (type == VM_FILE) {
+			dst_page->file = src_page->file;
+			dst_page->file.file = file_reopen(src_page->file.file);
+			if (dst_page->file.file == NULL) {
+				src_page->frame->pinned = false;
+				spt_remove_page(dst, dst_page);
+				return false;
+			}
 		}
 
 		dst_page->frame->pinned = true;
