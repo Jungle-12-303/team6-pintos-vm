@@ -242,6 +242,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_MUNMAP:
+			do_munmap((void*) SYS_ARG1);
 			break;
 
 		default:
