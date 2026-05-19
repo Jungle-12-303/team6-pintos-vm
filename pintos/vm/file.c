@@ -269,6 +269,13 @@ lazy_load_file (struct page *page, void *aux) {
 
 	/* 읽지 않은 남은 부분 0으로 채우기 */
 	memset(kva + load_info->page_read_bytes, 0, load_info->page_zero_bytes);
+	struct file_page *file_page = &page->file;
+	
+	file_page->file = load_info->file;
+	file_page->ofs = load_info->ofs;
+	file_page->page_read_bytes = load_info->page_read_bytes;
+	file_page->page_zero_bytes = load_info->page_zero_bytes;
+
 	free(load_info);
 	
 	return true;
