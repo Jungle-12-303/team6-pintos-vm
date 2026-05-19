@@ -224,6 +224,7 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		aux->page_zero_bytes = page_zero_bytes;
 
 		if(!vm_alloc_page_with_initializer (VM_FILE, curr_addr, writable, lazy_load_file, aux)) {
+			file_close(aux->file);
 			free(aux);
 			return NULL;
 		}
