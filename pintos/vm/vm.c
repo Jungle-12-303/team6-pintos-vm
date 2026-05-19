@@ -254,10 +254,8 @@ vm_get_victim (void) {
 			/* pinned가 아니거나, page, owner, pml4가 있는 frame은 후보*/
 			has_candidate = true;
 
-			if (pml4_is_accessed (frame->page->owner->pml4,
-						frame->page->va)) {
-				pml4_set_accessed (frame->page->owner->pml4,
-						frame->page->va, false);
+			if (pml4_is_accessed (frame->page->owner->pml4, frame->page->va)) {
+				pml4_set_accessed (frame->page->owner->pml4, frame->page->va, false);
 				continue;
 			}
 

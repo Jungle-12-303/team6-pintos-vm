@@ -129,9 +129,46 @@ file_backed_swap_out (struct page *page) {
 }
 
 /* 파일 기반 페이지를 제거합니다. PAGE는 호출자가 해제합니다. */
+/**
+ * @brief 파일 페이지 리소스 해제
+ * 페이지 구조체를 명시적으로 해제할 필요는 없습니다. 이는 호출자가 수행해야 합니다.
+ * vm_dealloc_page에서 호출
+ * vm_dealloc_page는 spt_remove_page, spt_destroy_func 에서 호출
+ * 
+ * 닫기 하기 전에 dirty인 페이지는 파일에 저장해야됨.
+ * -> 정리 작업은 munmap or destroy?
+ * -> munmap에서 destroy 호출하는 방식
+ * 
+ * @param page 
+ * @author iamnuked
+ * @date 2026-05-19
+ */
 static void
 file_backed_destroy (struct page *page) {
+	ASSERT(page != NULL);
+	ASSERT(page->operations->type == VM_FILE);
+	off_t bytes;
 	struct file_page *file_page UNUSED = &page->file;
+	/* 뭘 정리하지 -> 저장 후 파일 닫기? */
+	
+	/* dirty bit 확인 전 NULL 체크 */
+	if(page->owner == NULL || page->owner->pml4 == NULL || page->frame == NULL || 
+		page->frame->kva == NULL || file_page->file == NULL) {
+		thread_current ()->exit_status = -1;
+		return thread_exit ();
+	}
+	if (pml4_is_dirty(page->owner->pml4, page->va)) {
+		bytes = file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
+	
+		/* 써야할 bytes만큼 못 썼으면 false 반환 */
+		if (bytes != (off_t) file_page->page_read_bytes) {
+			thread_current ()->exit_status = -1;
+			return thread_exit ();
+		}
+	}
+	// spt, pte 해제 작업 필요
+	spt_remove_page (&page->owner->spt, page);
+
 }
 
 /* mmap을 수행합니다 */
@@ -244,6 +281,15 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
  */
 void
 do_munmap (void *addr) {
+	struct page *page = spt_find_page(&(thread_current()->spt), addr);
+
+	size_t read_bytes = page->file.page_read_bytes;
+	while (0 < read_bytes) {
+		file_backed_destroy(page);
+		page = spt_find_page(&(thread_current()->spt), addr+PGSIZE);
+		read_bytes = read_bytes - PGSIZE;
+	}
+
 }
 
 
