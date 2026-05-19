@@ -598,6 +598,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	file = filesys_open (program_name);
 
 	if (file == NULL) {
+		printf("load: %s: open failed\n", program_name);
 		goto done;
 	}
 
