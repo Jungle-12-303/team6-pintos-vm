@@ -60,6 +60,7 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	struct file_page *file_page = &page->file;
 
 	/* SONNY'S CODE */
+
 	return true;
 	/* SONNY'S CODE */
 }
@@ -147,27 +148,27 @@ static void
 file_backed_destroy (struct page *page) {
 	ASSERT(page != NULL);
 	ASSERT(page->operations->type == VM_FILE);
-	off_t bytes;
+	// off_t bytes;
 	struct file_page *file_page UNUSED = &page->file;
-	/* 뭘 정리하지 -> 저장 후 파일 닫기? */
+	// /* 뭘 정리하지 -> 저장 후 파일 닫기? */
 	
-	/* dirty bit 확인 전 NULL 체크 */
-	if(page->owner == NULL || page->owner->pml4 == NULL || page->frame == NULL || 
-		page->frame->kva == NULL || file_page->file == NULL) {
-		thread_current ()->exit_status = -1;
-		return thread_exit ();
-	}
-	if (pml4_is_dirty(page->owner->pml4, page->va)) {
-		bytes = file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
+	// /* dirty bit 확인 전 NULL 체크 */
+	// if(page->owner == NULL || page->owner->pml4 == NULL || page->frame == NULL || 
+	// 	page->frame->kva == NULL || file_page->file == NULL) {
+	// 	thread_current ()->exit_status = -1;
+	// 	return thread_exit ();
+	// }
+	// if (pml4_is_dirty(page->owner->pml4, page->va)) {
+	// 	bytes = file_write_at(file_page->file, page->frame->kva, (off_t)file_page->page_read_bytes, file_page->ofs);
 	
-		/* 써야할 bytes만큼 못 썼으면 false 반환 */
-		if (bytes != (off_t) file_page->page_read_bytes) {
-			thread_current ()->exit_status = -1;
-			return thread_exit ();
-		}
-	}
+	// 	/* 써야할 bytes만큼 못 썼으면 false 반환 */
+	// 	if (bytes != (off_t) file_page->page_read_bytes) {
+	// 		thread_current ()->exit_status = -1;
+	// 		return thread_exit ();
+	// 	}
+	// }
 	// spt, pte 해제 작업 필요
-	spt_remove_page (&page->owner->spt, page);
+	// spt_remove_page (&page->owner->spt, page);
 
 }
 
@@ -241,6 +242,8 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 
 	/* SPT에 페이지 정보 등록 */
 	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {
+		struct page* page = spt_find_page(&thread_current()->spt, (void*)curr_addr);
+
 
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
@@ -259,6 +262,8 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		aux->ofs = offset;
 		aux->page_read_bytes = page_read_bytes;
 		aux->page_zero_bytes = page_zero_bytes;
+		aux->start = start;
+		aux->end = end;
 
 		if(!vm_alloc_page_with_initializer (VM_FILE, curr_addr, writable, lazy_load_file, aux)) {
 			file_close(aux->file);
@@ -282,20 +287,31 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
  */
 void
 do_munmap (void *addr) {
+	if (addr == NULL || !is_pg_aligned(addr) || !is_user_vaddr(addr)) {
+		thread_current ()->exit_status = -1;
+		thread_exit();
+	}
+
 	struct page *page = spt_find_page(&(thread_current()->spt), addr);
 
-	size_t read_bytes = page->file.page_read_bytes;
-	while (0 < read_bytes) {
-		file_backed_destroy(page);
-		page = spt_find_page(&(thread_current()->spt), addr+PGSIZE);
-		read_bytes = read_bytes - PGSIZE;
+	if (page == NULL) {
+		thread_current ()->exit_status = -1;
+		thread_exit();
+	}
+	void* curr_addr = page->file.start;
+	void* end_addr = page->file.end;
+	while (curr_addr < end_addr) {
+		// file_backed_destroy(page);
+		page = spt_find_page(&(thread_current()->spt), curr_addr);
+		spt_remove_page(&thread_current()->spt, page);
+		curr_addr = curr_addr + PGSIZE;
 	}
 
 }
 
 
 /**
- * @brief do_mmap 에서 vm_alloc_page_with_initializer 4번째 인자 함수 아직 미구현
+ * @brief do_mmap 에서 vm_alloc_page_with_initializer 4번째 인자 함수
  * 
  * @author iamnuked
  * @date 2026-05-17
@@ -321,6 +337,8 @@ lazy_load_file (struct page *page, void *aux) {
 	file_page->ofs = load_info->ofs;
 	file_page->page_read_bytes = load_info->page_read_bytes;
 	file_page->page_zero_bytes = load_info->page_zero_bytes;
+	file_page->start = load_info->start;
+	file_page->end = load_info->end;
 
 	free(load_info);
 	
