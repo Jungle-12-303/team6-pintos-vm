@@ -33,8 +33,6 @@
 static void vm_free_frame (struct frame *frame);
 
 
-#define STACK_MAX (1 << 20) // stack 최대값 1MB
-
 /* 각 하위 시스템의 초기화 코드를 호출하여 가상 메모리 하위 시스템을 초기화한다. */
 static uint64_t page_hash_func (const struct hash_elem *e, void *aux);
 static bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
@@ -117,10 +115,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 		   uninit_new를 호출해서 "uninit" page 구조체를 만든다.
 		   uninit_new를 호출한 뒤 필요한 필드를 수정해야 한다. (writable)
 		 */
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
-
 		/* initializer 변수는 bool 반환 struct page *, enum vm_type, void *를 받는 함수를 가리킴 */
 		bool (*initializer)(struct page *, enum vm_type, void *);
 
@@ -534,11 +528,11 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 			}
 
 			uninit_new (dst_page,
-				src_page->va,
-				src_page->uninit.init,
-				src_page->uninit.type,
-				new_aux,
-				src_page->uninit.page_initializer);
+						src_page->va,
+						src_page->uninit.init,
+						src_page->uninit.type,
+						new_aux,
+						src_page->uninit.page_initializer);
 			dst_page->writable = src_page->writable;
 			/**
 			 * @brief dst_page는 자식 thread의 SPT에 들어가는 pgae라 owner을 현재 thread로 초기화
