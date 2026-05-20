@@ -193,9 +193,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 
-	uint8_t *start = addr;
-	uint8_t *end = start + length;
-
 	/* 인자 검증 */
 	
 	/* length 가 0인지 확인*/
@@ -216,8 +213,14 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	}
 
 	/* addr 정상수 주소 확인 */
-	if (addr == NULL || !is_pg_aligned(addr) ||
-		!is_user_vaddr(start) || !is_user_vaddr(end - 1)) {
+	if (addr == NULL || !is_pg_aligned(addr)) {
+		return NULL;
+	}
+
+	uint8_t *start = addr;
+	uint8_t *end = start + length;
+
+	if (!is_user_vaddr(start) || !is_user_vaddr(end - 1)) {
 		return NULL;
 	}
 
