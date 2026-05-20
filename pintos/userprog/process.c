@@ -672,10 +672,9 @@ load (const char *file_name, struct intr_frame *if_) {
 					/* load가 넘겨준 segment 하나를 page 단위로 쪼개서,
   					   각 page를 어떻게 채울지 */
 					if (!load_segment (file, file_page, (void *) mem_page,
-								read_bytes, zero_bytes, writable)) {
-							
-							goto done;
-								}
+									   read_bytes, zero_bytes, writable)) {	
+						goto done;
+					}
 				} 
 				else
 					goto done;

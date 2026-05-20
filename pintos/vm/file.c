@@ -193,7 +193,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	
 	struct supplemental_page_table *spt = &(thread_current()->spt);
 
-	
 	/* 인자 검증 */
 	
 	/* length 가 0인지 확인*/
@@ -214,8 +213,20 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	}
 
 	/* addr 정상수 주소 확인 */
-	if (addr == NULL || !is_pg_aligned(addr) || !is_user_vaddr(addr) || !is_user_vaddr((uint8_t*)addr + length - 1)) {
+	if (addr == NULL || !is_pg_aligned(addr)) {
 		return NULL;
+	}
+
+	uint8_t *start = addr;
+	uint8_t *end = start + length;
+
+	if (!is_user_vaddr(start) || !is_user_vaddr(end - 1)) {
+		return NULL;
+	}
+
+	/* 스택 영역 침범하는지 확인 */
+	if (start < (uint8_t *) USER_STACK && end > (uint8_t *) USER_STACK - STACK_MAX) {
+    	return NULL;
 	}
 
 	/* 읽는 파일 위치가 Page 시작 위치에 맞도록 맞춰야 함 */
@@ -223,8 +234,7 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		return NULL;
 	}
 
-	uint8_t *start = addr;
-	uint8_t *end = start + length;
+	
 
 	/* 이미 사용중인 페이지인지 체크 */
 	for (uint8_t* curr_addr = start; curr_addr < end; curr_addr = curr_addr + PGSIZE) {

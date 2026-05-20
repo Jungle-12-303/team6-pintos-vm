@@ -87,6 +87,8 @@ struct frame {
 	struct list_elem elem;
 };
 
+#define STACK_MAX (1 << 20) // stack 최대값 1MB
+
 /* 페이지 연산을 위한 함수 테이블.
  * 이는 C에서 "인터페이스"를 구현하는 한 가지 방법이다.
  * "메서드" 테이블을 구조체의 멤버에 넣고 필요할 때마다 호출한다. */
