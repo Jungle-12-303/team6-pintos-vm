@@ -460,6 +460,17 @@ process_exit (void) {
 
 		child_status_release (child);
 	}
+
+	
+	/**
+	 * @brief 부모 깨우기 전에 자식 프로세스 정리 (page_merge_mm 테스트)
+	 * 
+	 * @author iamnuked
+	 * @date 2026-05-20
+	 */
+	process_cleanup ();
+	/* SONNY'S CODE */
+
 	if (curr->child_status != NULL) {
 		curr->child_status->exit_status = curr->exit_status;
 		sema_up (&curr->child_status->wait_sema);
@@ -467,7 +478,7 @@ process_exit (void) {
 		curr->child_status = NULL;
 	}
 
-	process_cleanup ();
+	// process_cleanup ();
 }
 
 /* 현재 프로세스의 자원을 해제한다. */
